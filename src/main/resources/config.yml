@@ -1,0 +1,188 @@
+# ==================================================
+#   Find The Poulet - configuration
+# ==================================================
+
+# Largeur de l'arène en blocs (64 = 4 chunks de large, soit une zone de 4x4 chunks)
+arena-size: 64
+
+# Taille intérieure de l'enclos (4 = enclos de 4x4 avec une petite porte)
+enclosure-inner-size: 4
+
+min-players: 2
+max-players: 15
+
+# Durée d'une partie en secondes (1200 = 20 minutes)
+game-duration-seconds: 1200
+start-countdown-seconds: 10
+
+# Distance minimale entre l'enclos et l'apparition du poulet
+chicken-min-distance-from-enclosure: 12
+
+# Frapper le porteur lui fait lâcher le poulet (même si le PvP est désactivé)
+drop-chicken-on-hit: true
+
+# Garder son inventaire en mourant pendant une partie
+keep-inventory-on-death: false
+
+# Bloquer les commandes (/spawn, /home...) pendant une partie (les admins ne sont pas bloqués)
+block-commands-in-game: true
+allowed-commands: [poulet, ftp, findthepoulet, msg, tell, r]
+
+# Tête de poulet donnée aux joueurs
+lobby-item:
+  give-on-join: true
+  slot: 4
+  head-owner: MHF_Chicken
+  # Optionnel : texture base64 (minecraft-heads.com > "Value") si tu veux une autre tête
+  head-texture: ""
+
+# ==================================================
+#   Déguisement du poulet (sans pack de textures)
+# ==================================================
+# Un objet est affiché sur la tête du poulet. Chaque arène choisit dans
+# son menu admin : "Aléatoire" (un skin différent à chaque partie), "Aucun" ou un skin précis.
+# Aperçu en jeu : /poulet skin <nom>   -   après modification : /poulet reload
+chicken-skin:
+  enabled: true
+  # Variante officielle du poulet : temperate, warm, cold, random (ou none pour ne pas toucher)
+  variant: random
+  # Traînée de particules derrière le poulet libre (vide = aucune) : END_ROD, HEART, FLAME, HAPPY_VILLAGER...
+  particle: END_ROD
+
+  # Placement par défaut (chaque skin peut redéfinir ces valeurs)
+  scale: 0.42          # taille d'un bloc posé sur la tête (1 = bloc entier)
+  head-scale: 0.75     # taille d'une tête de joueur
+  offset-y: 0.75       # hauteur du centre de l'objet depuis les pattes
+  offset-forward: 0.28 # avance vers le bec (la tête est devant le corps)
+  rotation: 0          # mets 180 si la face de la citrouille regarde vers l'arrière
+  head-rotation: 0     # pareil pour les têtes de joueur
+
+  skins:
+    citrouille:
+      name: "<gold><bold>LE POULET CITROUILLE"
+      material: CARVED_PUMPKIN
+    lanterne:
+      name: "<gold><bold>LE POULET LANTERNE"
+      material: JACK_O_LANTERN
+    pasteque:
+      name: "<green><bold>LE POULET PASTÈQUE"
+      material: MELON
+    explosif:
+      name: "<red><bold>LE POULET EXPLOSIF"
+      material: TNT
+    bling:
+      name: "<aqua><bold>LE POULET BLING-BLING"
+      material: DIAMOND_BLOCK
+    ruche:
+      name: "<yellow><bold>LE POULET ABEILLE"
+      material: BEE_NEST
+    # Tête d'un joueur (pseudo Minecraft) :
+    # pote:
+    #   name: "<light_purple><bold>LE POULET DE KEVIN"
+    #   head-owner: "Kevin"
+    # Tête custom (minecraft-heads.com > champ "Value") :
+    # cowboy:
+    #   name: "<gold><bold>LE POULET COWBOY"
+    #   head-texture: "eyJ0ZXh0dXJlcyI6..."
+    #   scale: 0.8          # réglages propres à ce skin (optionnels)
+    #   offset-y: 0.8
+
+# ==================================================
+#   Flûte à poulet
+# ==================================================
+# Clic droit : le poulet caquette très fort là où il est -> on entend d'où vient le son.
+flute:
+  enabled: true
+  uses: 2                    # utilisations avant que la flûte casse
+  cooldown-seconds: 3
+  chicken-volume: 4.0        # 1 = entendu à 16 blocs, 4 = à 64 blocs
+  glow-seconds: 0            # > 0 : le poulet brille (visible à travers les murs) pendant X secondes
+  # Apparence (n'importe quel objet vanilla) : bamboo, breeze_rod, blaze_rod, end_rod, goat_horn...
+  model: bamboo
+
+# ==================================================
+#   Coffres cachés (flûte, boussole, plume)
+# ==================================================
+# Au début de la partie, des coffres sont placés au hasard dans l'arène (surface ou cavernes),
+# avec un objet chacun. Ils disparaissent au reset de l'arène.
+loot:
+  enabled: true
+  chests-per-player-min: 2   # nombre de coffres = entre min et max par joueur
+  chests-per-player-max: 3
+  weights:                   # chances relatives de chaque objet
+    flute: 40
+    compass: 25
+    feather: 35
+
+# Boussole à poulet : une vraie boussole dont l'aiguille pointe vers le poulet une fois activée
+compass:
+  enabled: true
+  duration-seconds: 15
+
+# Plume de saut : bond en avant, pas de dégâts de chute
+feather:
+  enabled: true
+  uses: 3
+  cooldown-seconds: 2
+  power: 1.3
+
+# ==================================================
+#   Comportement du poulet
+# ==================================================
+chicken:
+  flee:
+    enabled: true
+    radius: 6            # il fuit les joueurs à moins de X blocs (sauf s'ils sont accroupis)
+    speed: 1.8
+    run-seconds: 4       # il court X secondes...
+    rest-seconds: 3      # ...puis s'essouffle X secondes (le moment de l'attraper)
+  eggs: true             # il pond un œuf (impossible à ramasser) de temps en temps : un indice
+  egg-interval-seconds: 45
+  egg-lifetime-seconds: 90
+
+# Traînée de plumes derrière le porteur (pas de ralentissement)
+carrier:
+  feather-trail: true
+  feather-lifetime-seconds: 20
+
+# Anti-camping de l'enclos
+anti-camp:
+  enabled: true
+  radius: 8                      # zone autour de l'enclos
+  max-seconds: 10                # un joueur SANS poulet qui y reste plus longtemps est repoussé
+  carrier-protection-seconds: 3  # le porteur ne peut pas être frappé en arrivant dans la zone
+
+# Mort subite : les X dernières secondes, le poulet brille à travers les murs et pond plus souvent
+sudden-death:
+  enabled: true
+  seconds: 180
+
+# ==================================================
+#   Modes de jeu (réglables par arène dans le menu admin)
+# ==================================================
+# Format "Manches" : la première équipe à ramener N poulets gagne
+rounds:
+  points-to-win: 3
+  game-duration-seconds: 900
+  pause-seconds: 4
+
+# Mode Renard : un joueur tiré au sort ne peut pas porter le poulet mais élimine le porteur qu'il frappe.
+# Il gagne si personne ne ramène le poulet avant la fin.
+fox:
+  min-players: 3
+  speed-level: 1                 # Vitesse I (0 = aucune)
+  elimination-seconds: 45        # en Classique : temps avant de revenir (en Manches : à la manche suivante)
+
+# Kit de départ (MATERIAL:quantité)
+kit:
+  on-respawn: true
+  items:
+    - WOODEN_SWORD
+    - WOODEN_PICKAXE
+    - WOODEN_AXE
+    - WOODEN_SHOVEL
+    - BREAD:6
+    - TORCH:8
+
+# Remplis automatiquement par /poulet setlobby et /poulet setspawn
+# (sans lobby : les joueurs attendent devant l'enclos de l'arène)

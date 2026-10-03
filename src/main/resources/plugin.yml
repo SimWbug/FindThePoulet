@@ -1,0 +1,15 @@
+name: FindThePoulet
+version: '${version}'
+main: fr.simon.findthepoulet.FindThePoulet
+api-version: '26.1'
+description: Mini-jeu Find The Poulet - trouve le poulet et ramène-le dans l'enclos !
+author: Simon
+commands:
+  poulet:
+    description: Ouvre le menu Find The Poulet
+    usage: /poulet [pret|quitter|rejoindre|liste|creer|setlobby|setspawn|stop|supprimer|stats|classement|skin|reload|flute|leaderboard]
+    aliases: [ftp, findthepoulet]
+permissions:
+  findthepoulet.admin:
+    description: Créer et gérer les arènes
+    default: op
