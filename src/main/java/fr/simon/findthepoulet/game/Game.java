@@ -118,6 +118,10 @@ public final class Game {
     private int lootTimer;
     /** On a bloqué le cycle jour/nuit du monde pour cette partie (à rétablir à la fin). */
     private boolean lockedDaylight;
+    /** Poulets nommés (animaux de joueurs) cachés aux participants pendant la partie. */
+    private final Set<UUID> hiddenChickens = new HashSet<>();
+    /** Coffres posés par le plugin et pas encore ouverts (petites particules pour les repérer). */
+    private final Set<Location> unopenedChests = new HashSet<>();
     private int hintCycles;
     private final Map<UUID, BossBar> hintBars = new HashMap<>();
     private BukkitTask countdownTask;
@@ -469,6 +473,7 @@ public final class Game {
         }
         Msg.send(Bukkit.getConsoleSender(), "<gray>Partie lancée sur " + arena.name() + " (" + players.size() + " joueurs)");
 
+        clearOtherChickens();
         gameSkin = plugin.skins().pick(arena.skin());
         spawnChicken();
         if (gameSkin != null) broadcast("<gray>Le poulet du jour : " + gameSkin.name() + " <gray>!");
@@ -640,6 +645,7 @@ public final class Game {
             lootWave();
         }
         if (suddenDeath) suddenDeathEffects();
+        chestParticles();
         antiCamp();
         tickEliminated();
         if (!suddenDeath && cfg().getBoolean("sudden-death.enabled", true)
@@ -741,7 +747,9 @@ public final class Game {
         Location l = randomChickenSpot();
         Chicken c = l.getWorld().spawn(l, Chicken.class);
         c.customName(Msg.mm(gameSkin != null ? gameSkin.name() : "<gold><bold>LE POULET"));
-        c.setCustomNameVisible(true);
+        // false : le nom ne s'affiche que quand on vise le poulet de près (pas à travers les murs ni de loin)
+        c.setCustomNameVisible(cfg().getBoolean("chicken.name-always-visible", false));
+        c.setEggLayTime(Integer.MAX_VALUE); // il ne pond pas d'œufs vanilla (ramassables → bébés poulets)
         c.setRemoveWhenFarAway(false);
         c.setPersistent(false);
         c.setAdult();
@@ -771,6 +779,11 @@ public final class Game {
 
     /** Position aléatoire où l'on peut se tenir (surface ou cavernes), à au moins minD blocs du centre de l'enclos. */
     private Location randomSpot(double minD) {
+        return randomSpot(minD, 1.0 / 3);
+    }
+
+    /** @param surfaceChance probabilité de viser la surface plutôt que les cavernes */
+    private Location randomSpot(double minD, double surfaceChance) {
         World w = arena.world();
         Region r = arena.region();
         Location center = arena.enclosureCenter();
@@ -782,8 +795,11 @@ public final class Game {
             int z = rnd.nextInt(r.minZ() + 1, r.maxZ());
             double dx = x + 0.5 - center.getX(), dz = z + 0.5 - center.getZ();
             if (dx * dx + dz * dz < minD * minD) continue;
-            int top = w.getHighestBlockYAt(x, z);
-            if (rnd.nextInt(3) == 0 && Locs.standable(w, x, top + 1, z)) return Locs.center(w, x, top + 1, z);
+            int top = w.getHighestBlockYAt(x, z, org.bukkit.HeightMap.MOTION_BLOCKING_NO_LEAVES);
+            if (rnd.nextDouble() < surfaceChance) {
+                if (Locs.standable(w, x, top + 1, z)) return Locs.center(w, x, top + 1, z);
+                if (surfaceChance >= 0.99) continue;
+            }
             for (int k = 0; k < 16; k++) {
                 int y = rnd.nextInt(w.getMinHeight() + 1, top + 2);
                 if (Locs.standable(w, x, y, z)) return Locs.center(w, x, y, z);
@@ -1090,16 +1106,37 @@ public final class Game {
         ThreadLocalRandom rnd = ThreadLocalRandom.current();
         int count = 0;
         for (int i = 0; i < players.size(); i++) count += rnd.nextInt(min, max + 1);
+        count = Math.max(count, densityChests());
         int placed = placeChests(Math.min(count, 80));
         if (placed > 0) {
             broadcast("<yellow>" + placed + " coffres <gray>sont cachés dans l'arène : <gold>flûtes, boussoles, plumes, boules de neige...</gold>");
         }
     }
 
+    /** Minimum de coffres selon la taille de l'arène (sinon une grande arène paraît vide). */
+    private int densityChests() {
+        double perZone = Math.max(0, cfg().getDouble("loot.min-chests-per-64x64", 6));
+        double zones = Math.pow(arena.region().size() / 64.0, 2);
+        return (int) Math.round(perZone * zones);
+    }
+
+    /** Coffre ouvert (ou cassé) : on arrête ses particules. */
+    public void chestOpened(Location l) {
+        unopenedChests.remove(l.getBlock().getLocation());
+    }
+
+    private void chestParticles() {
+        if (!cfg().getBoolean("loot.chest-particles", true)) return;
+        unopenedChests.removeIf(l -> !l.isChunkLoaded() || l.getBlock().getType() != Material.CHEST);
+        for (Location l : unopenedChests) {
+            l.getWorld().spawnParticle(Particle.WAX_ON, l.clone().add(0.5, 1.1, 0.5), 3, 0.25, 0.2, 0.25, 0);
+        }
+    }
+
     /** Nouvelle vague de coffres pendant la partie. */
     private void lootWave() {
         int perPlayer = Math.max(0, cfg().getInt("loot.wave-chests-per-player", 1));
-        int placed = placeChests(Math.min(Math.max(1, active().size() * perPlayer), 40));
+        int placed = placeChests(Math.min(Math.max(Math.max(1, active().size() * perPlayer), densityChests() / 3), 40));
         if (placed <= 0) return;
         for (Player p : online()) {
             Msg.sound(p, "block.chest.open", 1.3f);
@@ -1115,7 +1152,7 @@ public final class Game {
         BlockFace[] faces = {BlockFace.NORTH, BlockFace.SOUTH, BlockFace.EAST, BlockFace.WEST};
         int placed = 0;
         for (int attempt = 0; attempt < count * 10 && placed < count; attempt++) {
-            Block b = randomSpot(6).getBlock();
+            Block b = randomSpot(6, cfg().getDouble("loot.surface-chance", 0.7)).getBlock();
             if (arena.isEnclosureBlock(b) || b.getType() == Material.CHEST
                     || b.getRelative(BlockFace.DOWN).getType() == Material.CHEST) continue;
             List<ItemStack> loot = new ArrayList<>();
@@ -1136,6 +1173,7 @@ public final class Game {
                 for (int i = 0; i < loot.size(); i++) chest.getSnapshotInventory().setItem(slots.get(i), loot.get(i));
                 chest.update(true, false);
             }
+            unopenedChests.add(b.getLocation());
             placed++;
         }
         return placed;
@@ -1574,6 +1612,8 @@ public final class Game {
         clearEntities();
         setChunkTickets(false);
         restoreDaytime();
+        hiddenChickens.clear();
+        unopenedChests.clear();
         board = null;
         sidebar = null;
         bossBar = null;
@@ -1588,6 +1628,10 @@ public final class Game {
         p.setWorldBorder(null);
         p.resetPlayerTime();
         p.resetPlayerWeather();
+        for (UUID hid : hiddenChickens) {
+            Entity e = Bukkit.getEntity(hid);
+            if (e != null) p.showEntity(plugin, e);
+        }
         p.setScoreboard(Bukkit.getScoreboardManager().getMainScoreboard());
         if (bossBar != null) p.hideBossBar(bossBar);
         BossBar hint = hintBars.remove(id);
@@ -1647,6 +1691,33 @@ public final class Game {
                 .with(FireworkEffect.Type.BALL_LARGE).flicker(true).build());
         meta.setPower(1);
         fw.setFireworkMeta(meta);
+    }
+
+    // ================================================================ autres poulets
+
+    /**
+     * Seul le poulet du jeu doit exister dans l'arène : les poulets sauvages sont retirés,
+     * les poulets nommés (animaux des joueurs) sont juste cachés aux participants pendant la partie.
+     */
+    private void clearOtherChickens() {
+        World w = arena.world();
+        if (w == null) return;
+        Region r = arena.region();
+        org.bukkit.util.BoundingBox box = new org.bukkit.util.BoundingBox(r.minX(), w.getMinHeight(), r.minZ(),
+                r.maxX() + 1, w.getMaxHeight(), r.maxZ() + 1);
+        for (Entity e : w.getNearbyEntities(box, en -> en instanceof Chicken)) handleOtherChicken(e);
+    }
+
+    /** Appelé aussi quand un chunk de l'arène se charge pendant la partie. */
+    public void handleOtherChicken(Entity e) {
+        if (!(e instanceof Chicken) || isChicken(e) || !arena.region().contains(e.getLocation())) return;
+        if (e.getPersistentDataContainer().has(Items.chickenKey(), PersistentDataType.BYTE)) return; // aperçu de skin...
+        if (e.customName() == null) {
+            e.remove();
+            return;
+        }
+        hiddenChickens.add(e.getUniqueId());
+        for (Player p : online()) p.hideEntity(plugin, e);
     }
 
     // ================================================================ jour / météo

@@ -260,6 +260,35 @@ public final class GameListener implements Listener {
         }
     }
 
+    /** Pas d'autres poulets dans une arène en cours : apparitions naturelles, œufs, jockeys... */
+    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
+    public void onChickenSpawn(org.bukkit.event.entity.CreatureSpawnEvent e) {
+        if (!(e.getEntity() instanceof Chicken)) return;
+        if (e.getSpawnReason() == org.bukkit.event.entity.CreatureSpawnEvent.SpawnReason.CUSTOM) return; // le poulet du jeu
+        if (at(e.getLocation()) != null) e.setCancelled(true);
+    }
+
+    @EventHandler
+    public void onEggThrow(org.bukkit.event.player.PlayerEggThrowEvent e) {
+        if (at(e.getEgg().getLocation()) != null || of(e.getPlayer()) != null) e.setHatching(false);
+    }
+
+    /** Le poulet du jeu ne pond pas d'œufs vanilla (les indices du plugin sont gérés à part). */
+    @EventHandler(ignoreCancelled = true)
+    public void onLay(org.bukkit.event.entity.EntityDropItemEvent e) {
+        if (plugin.games().byChicken(e.getEntity()) != null) e.setCancelled(true);
+    }
+
+    /** Un chunk de l'arène se charge en pleine partie : on y traite les poulets "intrus". */
+    @EventHandler
+    public void onEntitiesLoad(org.bukkit.event.world.EntitiesLoadEvent e) {
+        for (Entity en : e.getEntities()) {
+            if (!(en instanceof Chicken)) continue;
+            Game g = at(en.getLocation());
+            if (g != null) g.handleOtherChicken(en);
+        }
+    }
+
     @EventHandler
     public void onDismount(EntityDismountEvent e) {
         if (e.getDismounted() instanceof Player p && plugin.games().byChicken(e.getEntity()) != null) {
@@ -488,6 +517,7 @@ public final class GameListener implements Listener {
             return;
         }
         recordContainer(g, e.getInventory());
+        g.chestOpened(l);
     }
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)

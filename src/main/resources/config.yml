@@ -113,6 +113,10 @@ loot:
   chests-per-player-max: 4
   items-per-chest-min: 1
   items-per-chest-max: 2
+  # Minimum selon la taille de l'arène : X coffres par carré de 64×64 (128×128 = ×4, 256×256 = ×16...)
+  min-chests-per-64x64: 6
+  surface-chance: 0.7        # 70 % des coffres en surface, le reste dans les cavernes
+  chest-particles: true      # petites étincelles au-dessus des coffres pas encore ouverts
   # Nouvelle vague de coffres pendant la partie (0 = désactivé)
   wave-interval-seconds: 120
   wave-chests-per-player: 1
@@ -148,6 +152,8 @@ feather:
 #   Comportement du poulet
 # ==================================================
 chicken:
+  # false : le nom du poulet ne s'affiche que quand on le vise de près (pas de loin, pas à travers les murs)
+  name-always-visible: false
   flee:
     enabled: true
     radius: 6            # il fuit les joueurs à moins de X blocs (sauf s'ils sont accroupis)
