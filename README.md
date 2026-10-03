@@ -10,11 +10,22 @@ Clic droit pour l'attraper, ramène-le dans l'enclos du point de départ → vic
 
 Mettre le jar dans `plugins/` et redémarrer le serveur.
 
+## Outils admin
+`/poulet admin` (ou bouton « Outils admin » de la tête de poulet) : créer une arène, zone lobby / spawn,
+zones protégées, hologrammes de classement, spawn du serveur, lobby d'attente, recharger la config.
+
+### Zone lobby / spawn protégée
+Outil (bâton de blaze, `/poulet lobby`) : clic gauche = coin 1, clic droit = coin 2, clic droit dans l'air = menu → « Créer ».
+Réglages par zone : monstres bloqués (pas d'apparition, retirés, ne ciblent pas), joueurs invincibles, pas de faim,
+PvP désactivé, construction réservée aux admins, pas d'explosions ni de feu. Bouton « Spawn du serveur ici ».
+`spawn.teleport-on-join` (config) : téléporte au spawn à la connexion.
+
 ## Créer une arène (op)
 1. Tête de poulet → étoile **Créer une arène** (ou `/poulet creer`)
 2. Écrire le nom dans le chat
-3. **Bâton** : clic droit au sol → zone de 64×64 (4 chunks) autour du point, contour en particules
-4. Menu : équipes (Solo / Duo / Trio / Quatuor) et PvP
+3. **Bâton** : clic droit au sol → zone autour du point, contour en particules
+4. Menu (clic droit dans l'air) : **taille 64 / 128 / 256 / 512 / 1024**, équipes, PvP, format (Classique / Manches), mode Renard, kit, déguisement
+   (au-delà de 512, pré-génère la zone avec un plugin comme Chunky)
 5. **Faux** : clic droit au sol → enclos 4×4 avec porte (à 4 blocs mini du bord)
 6. **Valider l'arène** dans le menu (clic droit dans l'air avec un outil)
 
@@ -66,6 +77,7 @@ Victoires, parties, poulets attrapés, poulets ramenés, poulets tués, élimina
 | `/poulet rejoindre <arène>` / `liste` | rejoindre / lister |
 | `/poulet creer [nom]` / `annuler` | création d'arène (admin) |
 | `/poulet setlobby` / `setspawn` | lobby d'attente / spawn de fin de partie (admin) |
+| `/poulet forcer [arène]` | lancer la partie même seul, sans attendre les « prêt » (admin) |
 | `/poulet stop <arène>` / `supprimer <arène>` | admin |
 | `/poulet stats [joueur]` / `classement` | statistiques / classements |
 | `/poulet leaderboard <stat>` / `supprimer` / `liste` | hologrammes de classement (admin) |
