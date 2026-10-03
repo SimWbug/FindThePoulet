@@ -10,7 +10,7 @@ import java.util.Map;
 /** Identifie nos menus (les clics y sont bloqués et redirigés vers {@link Menus#handle}). */
 public final class MenuHolder implements InventoryHolder {
 
-    public enum Type { MAIN, ARENA_ADMIN, SETUP, STATS }
+    public enum Type { MAIN, ARENA_ADMIN, SETUP, STATS, ADMIN, HOLOGRAMS, ZONES, ZONE }
 
     private final Type type;
     private final String arenaName;

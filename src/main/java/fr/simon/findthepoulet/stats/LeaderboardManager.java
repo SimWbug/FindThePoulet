@@ -115,6 +115,17 @@ public final class LeaderboardManager {
         return best;
     }
 
+    public Board get(String id) {
+        return boards.get(id);
+    }
+
+    public void remove(String id) {
+        Board b = boards.remove(id);
+        if (b == null) return;
+        if (b.display != null && b.display.isValid()) b.display.remove();
+        save();
+    }
+
     public void refresh() {
         for (Board b : boards.values()) update(b);
     }

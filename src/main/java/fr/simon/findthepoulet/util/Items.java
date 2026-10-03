@@ -26,6 +26,7 @@ public final class Items {
     public static final String FLUTE = "flute";
     public static final String COMPASS = "compass";
     public static final String FEATHER = "feather";
+    public static final String LOBBY = "lobby";
 
     /** Objets de jeu trouvés dans les coffres (on peut les jeter, les perdre...). */
     public static boolean isGadget(String tag) {
@@ -125,6 +126,13 @@ public final class Items {
                 "<gray>Clic droit au sol : définit la zone",
                 "<gray>de l'arène autour de ce point",
                 "<gray>Clic droit dans l'air : menu"), ZONE);
+    }
+
+    public static ItemStack lobbyTool() {
+        return tag(build(Material.BLAZE_ROD, "<gold><bold>Outil zone lobby / spawn",
+                "<gray>Clic gauche sur un bloc : <white>coin 1",
+                "<gray>Clic droit sur un bloc : <white>coin 2",
+                "<gray>Clic droit dans l'air : <white>menu des zones"), LOBBY);
     }
 
     public static ItemStack enclosTool() {

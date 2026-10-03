@@ -4,6 +4,8 @@
 
 # Largeur de l'arène en blocs (64 = 4 chunks de large, soit une zone de 4x4 chunks)
 arena-size: 64
+# Tailles proposées dans le menu de création d'arène (clic pour passer à la suivante)
+arena-sizes: [64, 128, 256, 512, 1024]
 
 # Taille intérieure de l'enclos (4 = enclos de 4x4 avec une petite porte)
 enclosure-inner-size: 4
@@ -183,6 +185,10 @@ kit:
     - WOODEN_SHOVEL
     - BREAD:6
     - TORCH:8
+
+# Spawn du serveur (défini via /poulet admin -> "Spawn du serveur ici")
+spawn:
+  teleport-on-join: true   # téléporte les joueurs au spawn à chaque connexion
 
 # Remplis automatiquement par /poulet setlobby et /poulet setspawn
 # (sans lobby : les joueurs attendent devant l'enclos de l'arène)

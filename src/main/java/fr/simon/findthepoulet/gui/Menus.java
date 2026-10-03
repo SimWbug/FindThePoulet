@@ -90,15 +90,19 @@ public final class Menus {
         }
 
         if (admin) {
-            inv.setItem(45, Items.build(Material.NETHER_STAR, "<aqua><bold>Créer une arène",
-                    "<gray>Nom → bâton (zone) → réglages",
-                    "<gray>→ faux (enclos) → valider"));
+            inv.setItem(45, Items.build(Material.COMMAND_BLOCK, "<aqua><bold>Outils admin",
+                    "<gray>Créer une arène, zone lobby / spawn,",
+                    "<gray>hologrammes de classement..."));
         }
         if (current != null) {
             boolean ready = current.isReady(p);
             inv.setItem(47, Items.build(ready ? Material.LIME_DYE : Material.GRAY_DYE,
                     ready ? "<green><bold>Tu es prêt !" : "<yellow><bold>Se mettre prêt",
                     ready ? "<gray>Clique pour ne plus être prêt" : "<gray>Clique quand tu es prêt à jouer"));
+            if (admin && (current.state() == Game.State.WAITING || current.state() == Game.State.STARTING)) {
+                inv.setItem(46, Items.build(Material.LIME_CANDLE, "<green><bold>Forcer le lancement",
+                        "<gray>Admin : lance la partie maintenant,", "<gray>même seul et sans les \"prêt\""));
+            }
             inv.setItem(51, Items.build(Material.RED_BED, "<red><bold>Quitter la partie",
                     "<gray>Partie : <white>" + current.arena().name()));
         }
@@ -157,6 +161,8 @@ public final class Menus {
                 "<gray>Zone : <white>" + r.minX() + ", " + r.minZ() + " → " + r.maxX() + ", " + r.maxZ(),
                 "<gray>Enclos : <white>" + a.ex() + ", " + a.ey() + ", " + a.ez(),
                 "<gray>Partie : <white>" + (g == null ? "aucune" : g.state().name() + " (" + g.size() + " joueurs)")));
+        inv.setItem(21, Items.build(Material.LIME_CANDLE, "<green><bold>Forcer le lancement",
+                "<gray>Lance la partie avec les joueurs du lobby,", "<gray>même seul et sans attendre les \"prêt\""));
         inv.setItem(22, Items.build(Material.ENDER_PEARL, "<aqua><bold>Se téléporter", "<gray>Devant l'enclos"));
         inv.setItem(23, Items.build(Material.REDSTONE_BLOCK, "<red><bold>Arrêter la partie",
                 "<gray>Arrête la partie / le lobby en cours", "<gray>et remet l'arène à zéro"));
@@ -185,25 +191,292 @@ public final class Menus {
     // ================================================================ création d'arène
 
     public static void openSetup(Player p, SetupSession s) {
+        FindThePoulet plugin = plugin();
         MenuHolder holder = new MenuHolder(MenuHolder.Type.SETUP, s.name());
-        Inventory inv = create(holder, 27, "<dark_gray>Création : " + (s.name() == null ? "?" : s.name()));
+        Inventory inv = create(holder, 36, "<dark_gray>Création : " + (s.name() == null ? "?" : s.name()));
 
-        inv.setItem(10, Items.build(Material.WHITE_BANNER, "<yellow><bold>Équipes : <white>" + s.mode().label(),
+        // Ligne 1 : réglages
+        inv.setItem(10, Items.build(Material.FILLED_MAP, "<aqua><bold>Taille : <white>" + s.size() + " × " + s.size(),
+                "<gray>64, 128, 256, 512 ou 1024 blocs de côté",
+                "<gray>(toute la hauteur : surface + cavernes)",
+                s.region() != null ? "<gray>La zone est recalculée autour du même point" : "<gray>Choisis-la avant ou après le bâton",
+                "<yellow>Clic : <white>taille suivante"));
+        inv.setItem(11, Items.build(Material.WHITE_BANNER, "<yellow><bold>Équipes : <white>" + s.mode().label(),
                 "<gray>Solo, Duo, Trio ou Quatuor", "<yellow>Clic : <white>changer"));
-        inv.setItem(11, Items.build(s.pvp() ? Material.IRON_SWORD : Material.WOODEN_SWORD,
+        inv.setItem(12, Items.build(s.pvp() ? Material.IRON_SWORD : Material.WOODEN_SWORD,
                 "<yellow><bold>PvP : " + onOff(s.pvp()), "<yellow>Clic : <white>activer / désactiver"));
-        inv.setItem(13, Items.build(Material.STICK, (s.region() != null ? "<green>✔ " : "<red>✘ ") + "<aqua><bold>Zone",
+        inv.setItem(13, Items.build(s.format() == GameFormat.ROUNDS ? Material.CLOCK : Material.HAY_BLOCK,
+                "<yellow><bold>Format : <white>" + s.format().label(),
+                "<gray>Classique : le 1er poulet ramené gagne",
+                "<gray>Manches : 1ère équipe à <white>" + plugin.getConfig().getInt("rounds.points-to-win", 3) + "<gray> poulets",
+                "<yellow>Clic : <white>changer"));
+        inv.setItem(14, Items.build(s.fox() ? Material.SWEET_BERRIES : Material.DEAD_BUSH,
+                "<gold><bold>Mode Renard : " + onOff(s.fox()),
+                "<gray>Un joueur tiré au sort élimine",
+                "<gray>le porteur qu'il frappe (3 joueurs min.)",
+                "<yellow>Clic : <white>activer / désactiver"));
+        inv.setItem(15, Items.build(s.kit() ? Material.WOODEN_PICKAXE : Material.BARRIER,
+                "<yellow><bold>Kit de départ : " + onOff(s.kit()),
+                "<gray>Outils en bois + nourriture", "<yellow>Clic : <white>activer / désactiver"));
+        inv.setItem(16, skinItem(s.skin()));
+
+        // Ligne 2 : outils + validation
+        inv.setItem(20, Items.build(Material.STICK, (s.region() != null ? "<green>✔ " : "<red>✘ ") + "<aqua><bold>Zone",
                 s.region() != null ? "<gray>Zone définie (" + s.region().size() + "×" + s.region().size() + ")" : "<gray>Pas encore définie",
                 "<yellow>Clic : <white>récupérer le bâton"));
-        inv.setItem(14, Items.build(Material.IRON_HOE, (s.hasEnclosure() ? "<green>✔ " : "<red>✘ ") + "<yellow><bold>Enclos",
+        inv.setItem(22, Items.build(Material.IRON_HOE, (s.hasEnclosure() ? "<green>✔ " : "<red>✘ ") + "<yellow><bold>Enclos",
                 s.hasEnclosure() ? "<gray>Enclos placé" : "<gray>Pas encore placé",
                 "<yellow>Clic : <white>récupérer la faux"));
         boolean ok = s.region() != null && s.hasEnclosure();
-        inv.setItem(16, Items.build(ok ? Material.LIME_CONCRETE : Material.GRAY_CONCRETE, "<green><bold>Valider l'arène",
+        inv.setItem(24, Items.build(ok ? Material.LIME_CONCRETE : Material.GRAY_CONCRETE, "<green><bold>Valider l'arène",
                 ok ? "<gray>L'arène deviendra jouable" : "<red>Zone et enclos requis"));
-        inv.setItem(22, Items.build(Material.BARRIER, "<red><bold>Annuler la création"));
+        inv.setItem(31, Items.build(Material.BARRIER, "<red><bold>Annuler la création"));
+        fill(inv, 0, 35);
+        p.openInventory(inv);
+    }
+
+    // ================================================================ outils admin
+
+    public static void openAdmin(Player p) {
+        MenuHolder holder = new MenuHolder(MenuHolder.Type.ADMIN, null);
+        Inventory inv = create(holder, 27, "<dark_gray>Outils admin - Find The Poulet");
+        inv.setItem(10, Items.build(Material.NETHER_STAR, "<aqua><bold>Créer une arène",
+                "<gray>Nom → bâton (zone) → réglages", "<gray>→ faux (enclos) → valider"));
+        inv.setItem(11, Items.build(Material.BLAZE_ROD, "<gold><bold>Outil zone lobby / spawn",
+                "<gray>Sélectionne 2 coins d'une zone protégée", "<gray>(pas de monstres, invincible...)",
+                "<yellow>Clic : <white>recevoir l'outil"));
+        inv.setItem(12, Items.build(Material.SHIELD, "<gold><bold>Zones protégées",
+                "<gray>" + plugin().zones().all().size() + " zone(s)", "<yellow>Clic : <white>gérer"));
+        inv.setItem(13, Items.build(Material.GOLD_BLOCK, "<gold><bold>Hologrammes de classement",
+                "<gray>Victoires, poulets attrapés...", "<gray>" + plugin().leaderboards().all().size() + " placé(s)",
+                "<yellow>Clic : <white>gérer"));
+        inv.setItem(14, Items.build(Material.RED_BED, "<yellow><bold>Spawn du serveur ici",
+                "<gray>Retour des joueurs en fin de partie", "<gray>(et à la connexion, voir config)",
+                "<yellow>Clic : <white>définir à ta position"));
+        inv.setItem(15, Items.build(Material.OAK_SIGN, "<yellow><bold>Lobby d'attente ici",
+                "<gray>Où les joueurs attendent avant une partie", "<gray>(sinon : devant l'enclos)",
+                "<yellow>Clic : <white>définir à ta position"));
+        inv.setItem(16, Items.build(Material.COMPARATOR, "<gray><bold>Recharger la config"));
+        inv.setItem(22, Items.build(Material.ARROW, "<gray>Retour"));
         fill(inv, 0, 26);
         p.openInventory(inv);
+    }
+
+    private static void handleAdmin(Player p, int slot) {
+        FindThePoulet plugin = plugin();
+        if (!p.hasPermission(ADMIN_PERM)) { p.closeInventory(); return; }
+        switch (slot) {
+            case 10 -> plugin.setup().start(p);
+            case 11 -> {
+                p.closeInventory();
+                Items.give(p, Items.lobbyTool());
+                Msg.send(p, "<gold>Outil zone lobby : <white>clic gauche <gray>= coin 1, <white>clic droit <gray>= coin 2, "
+                        + "<white>clic droit dans l'air <gray>= menu pour créer la zone.");
+            }
+            case 12 -> openZones(p);
+            case 13 -> openHolograms(p);
+            case 14, 15 -> {
+                String path = slot == 14 ? "main-spawn" : "lobby";
+                fr.simon.findthepoulet.util.Locs.save(plugin.getConfig(), path, p.getLocation());
+                plugin.saveConfig();
+                if (slot == 14) p.getWorld().setSpawnLocation(p.getLocation());
+                Msg.send(p, slot == 14 ? "<green>Spawn du serveur défini ici." : "<green>Lobby d'attente défini ici.");
+                Msg.sound(p, "block.note_block.pling", 1.5f);
+            }
+            case 16 -> {
+                plugin.reload();
+                Msg.send(p, "<green>Config rechargée.");
+            }
+            case 22 -> openMain(p);
+            default -> { }
+        }
+    }
+
+    // ================================================================ hologrammes de classement
+
+    public static void openHolograms(Player p) {
+        FindThePoulet plugin = plugin();
+        MenuHolder holder = new MenuHolder(MenuHolder.Type.HOLOGRAMS, null);
+        Inventory inv = create(holder, 45, "<dark_gray>Hologrammes de classement");
+        int[] slots = {10, 11, 12, 14, 15, 16};
+        Stat[] stats = Stat.values();
+        for (int i = 0; i < stats.length && i < slots.length; i++) {
+            inv.setItem(slots[i], Items.build(stats[i].icon(), "<gold><bold>" + stats[i].label(),
+                    "<gray>Place un classement flottant (top 10)", "<gray>au-dessus de ta position",
+                    "<yellow>Clic : <white>placer ici"));
+            holder.arenaSlots().put(slots[i], "stat:" + stats[i].key());
+        }
+        int slot = 27;
+        for (fr.simon.findthepoulet.stats.LeaderboardManager.Board b : plugin.leaderboards().all()) {
+            if (slot > 35) break;
+            org.bukkit.Location l = b.location();
+            inv.setItem(slot, Items.build(Material.PAPER, "<yellow>" + b.stat().label(),
+                    "<gray>" + (l.getWorld() != null ? l.getWorld().getName() : "?") + " " + l.getBlockX() + ", " + l.getBlockY() + ", " + l.getBlockZ(),
+                    "<yellow>Clic gauche : <white>s'y téléporter",
+                    "<red>Shift + clic : <white>supprimer"));
+            holder.arenaSlots().put(slot, "board:" + b.id());
+            slot++;
+        }
+        inv.setItem(36, Items.build(Material.ARROW, "<gray>Retour"));
+        fill(inv, 0, 44);
+        p.openInventory(inv);
+    }
+
+    private static void handleHolograms(Player p, MenuHolder holder, int slot, ClickType click) {
+        FindThePoulet plugin = plugin();
+        if (!p.hasPermission(ADMIN_PERM)) { p.closeInventory(); return; }
+        if (slot == 36) { openAdmin(p); return; }
+        String v = holder.arenaSlots().get(slot);
+        if (v == null) return;
+        if (v.startsWith("stat:")) {
+            Stat st = Stat.parse(v.substring(5));
+            plugin.leaderboards().create(st, p.getLocation().add(0, 2.2, 0));
+            p.closeInventory();
+            Msg.send(p, "<green>Classement <gold>" + st.label() + "</gold> placé ici ! <gray>(mis à jour toutes les 20 s)");
+            Msg.sound(p, "block.amethyst_block.chime", 1f);
+            return;
+        }
+        var b = plugin.leaderboards().get(v.substring(6));
+        if (b == null) { openHolograms(p); return; }
+        if (click.isShiftClick()) {
+            plugin.leaderboards().remove(b.id());
+            Msg.send(p, "<green>Classement supprimé.");
+            openHolograms(p);
+        } else {
+            p.closeInventory();
+            p.teleport(b.location().clone().add(0, -2.2, 2));
+        }
+    }
+
+    // ================================================================ zones protégées
+
+    public static void openZones(Player p) {
+        FindThePoulet plugin = plugin();
+        MenuHolder holder = new MenuHolder(MenuHolder.Type.ZONES, null);
+        Inventory inv = create(holder, 45, "<dark_gray>Zones protégées (lobby / spawn)");
+        org.bukkit.Location[] sel = plugin.zones().selection(p.getUniqueId());
+        var region = plugin.zones().selectedRegion(p.getUniqueId());
+        inv.setItem(4, Items.build(region != null ? Material.LIME_CONCRETE : Material.GRAY_CONCRETE,
+                "<green><bold>Créer une zone avec ta sélection",
+                "<gray>Coin 1 : " + (sel[0] == null ? "<red>non défini" : "<white>" + sel[0].getBlockX() + ", " + sel[0].getBlockZ()),
+                "<gray>Coin 2 : " + (sel[1] == null ? "<red>non défini" : "<white>" + sel[1].getBlockX() + ", " + sel[1].getBlockZ()),
+                region != null ? "<gray>Taille : <white>" + (region.maxX() - region.minX() + 1) + " × " + (region.maxZ() - region.minZ() + 1)
+                        : "<gray>Utilise l'outil (bâton de blaze) pour choisir 2 coins",
+                "<yellow>Clic : <white>créer"));
+        int slot = 18;
+        for (fr.simon.findthepoulet.zone.ProtectedZone z : plugin.zones().all()) {
+            if (slot > 35) break;
+            var r = z.region();
+            inv.setItem(slot, Items.build(Material.SHIELD, "<gold><bold>" + z.name(),
+                    "<gray>" + r.world() + " : " + r.minX() + ", " + r.minZ() + " → " + r.maxX() + ", " + r.maxZ(),
+                    "<yellow>Clic : <white>réglages"));
+            holder.arenaSlots().put(slot, z.name());
+            slot++;
+        }
+        inv.setItem(40, Items.build(Material.BLAZE_ROD, "<gold>Recevoir l'outil de sélection"));
+        inv.setItem(36, Items.build(Material.ARROW, "<gray>Retour"));
+        fill(inv, 0, 44);
+        p.openInventory(inv);
+    }
+
+    private static void handleZones(Player p, MenuHolder holder, int slot) {
+        FindThePoulet plugin = plugin();
+        if (!p.hasPermission(ADMIN_PERM)) { p.closeInventory(); return; }
+        switch (slot) {
+            case 4 -> {
+                var region = plugin.zones().selectedRegion(p.getUniqueId());
+                if (region == null) { Msg.send(p, "<red>Sélectionne d'abord 2 coins avec l'outil (clic gauche / clic droit)."); return; }
+                Arena a = plugin.arenas().overlapping(region);
+                if (a != null) { Msg.send(p, "<red>Cette zone chevauche l'arène <yellow>" + a.name() + "</yellow>."); return; }
+                var z = plugin.zones().create(plugin.zones().nextName(), region);
+                plugin.zones().clearSelection(p.getUniqueId());
+                Msg.send(p, "<green>Zone protégée <gold>" + z.name() + "</gold> créée ! <gray>Tout est activé par défaut, règle-la ici.");
+                Msg.sound(p, "ui.toast.challenge_complete", 1f);
+                openZone(p, z);
+            }
+            case 40 -> {
+                p.closeInventory();
+                Items.give(p, Items.lobbyTool());
+            }
+            case 36 -> openAdmin(p);
+            default -> {
+                var z = plugin.zones().get(holder.arenaSlots().get(slot));
+                if (z != null) openZone(p, z);
+            }
+        }
+    }
+
+    public static void openZone(Player p, fr.simon.findthepoulet.zone.ProtectedZone z) {
+        MenuHolder holder = new MenuHolder(MenuHolder.Type.ZONE, z.name());
+        Inventory inv = create(holder, 36, "<dark_gray>Zone : " + z.name());
+        var flags = fr.simon.findthepoulet.zone.ProtectedZone.Flag.values();
+        Material[] icons = {Material.ZOMBIE_HEAD, Material.TOTEM_OF_UNDYING, Material.COOKED_BEEF,
+                Material.IRON_SWORD, Material.BRICKS, Material.TNT};
+        for (int i = 0; i < flags.length; i++) {
+            var f = flags[i];
+            List<String> lore = new ArrayList<>();
+            for (String line : f.description().split("\n")) lore.add("<gray>" + line);
+            lore.add("<yellow>Clic : <white>activer / désactiver");
+            inv.setItem(10 + i, Items.build(z.has(f) ? icons[i] : Material.GRAY_DYE,
+                    (z.has(f) ? "<green>✔ " : "<red>✘ ") + "<white><bold>" + f.label(), lore.toArray(String[]::new)));
+        }
+        inv.setItem(16, Items.build(Material.ENDER_EYE, "<aqua><bold>Afficher la zone", "<gray>Contour en particules pendant 15 s"));
+        inv.setItem(20, Items.build(Material.RED_BED, "<yellow><bold>Spawn du serveur ici",
+                "<gray>Définit le spawn à ta position", "<gray>(retour de fin de partie, connexion)"));
+        inv.setItem(22, Items.build(Material.BLAZE_ROD, "<yellow><bold>Redéfinir avec ta sélection",
+                "<gray>Remplace les limites par tes 2 coins"));
+        inv.setItem(24, Items.build(Material.TNT, "<dark_red><bold>Supprimer la zone", "<red>Shift + clic <gray>pour confirmer"));
+        inv.setItem(27, Items.build(Material.ARROW, "<gray>Retour"));
+        fill(inv, 0, 35);
+        p.openInventory(inv);
+    }
+
+    private static void handleZone(Player p, MenuHolder holder, int slot, ClickType click) {
+        FindThePoulet plugin = plugin();
+        if (!p.hasPermission(ADMIN_PERM)) { p.closeInventory(); return; }
+        var z = plugin.zones().get(holder.arenaName());
+        if (z == null) { openZones(p); return; }
+        var flags = fr.simon.findthepoulet.zone.ProtectedZone.Flag.values();
+        if (slot >= 10 && slot < 10 + flags.length) {
+            z.toggle(flags[slot - 10]);
+            plugin.zones().save();
+            Msg.sound(p, "ui.button.click", 1f);
+            openZone(p, z);
+            return;
+        }
+        switch (slot) {
+            case 16 -> {
+                plugin.zones().show(p, z);
+                p.closeInventory();
+            }
+            case 20 -> {
+                if (!z.region().contains(p.getLocation())) Msg.send(p, "<gold>Attention : tu n'es pas dans la zone " + z.name() + ".");
+                fr.simon.findthepoulet.util.Locs.save(plugin.getConfig(), "main-spawn", p.getLocation());
+                plugin.saveConfig();
+                p.getWorld().setSpawnLocation(p.getLocation());
+                Msg.send(p, "<green>Spawn du serveur défini ici.");
+                Msg.sound(p, "block.note_block.pling", 1.5f);
+            }
+            case 22 -> {
+                var region = plugin.zones().selectedRegion(p.getUniqueId());
+                if (region == null) { Msg.send(p, "<red>Sélectionne d'abord 2 coins avec l'outil."); return; }
+                Arena a = plugin.arenas().overlapping(region);
+                if (a != null) { Msg.send(p, "<red>Cette zone chevauche l'arène <yellow>" + a.name() + "</yellow>."); return; }
+                z.setRegion(region);
+                plugin.zones().save();
+                plugin.zones().clearSelection(p.getUniqueId());
+                Msg.send(p, "<green>Limites de la zone mises à jour.");
+                openZone(p, z);
+            }
+            case 24 -> {
+                if (!click.isShiftClick()) { Msg.send(p, "<red>Fais <yellow>Shift + clic</yellow> pour confirmer."); return; }
+                plugin.zones().remove(z.name());
+                Msg.send(p, "<green>Zone supprimée.");
+                openZones(p);
+            }
+            case 27 -> openZones(p);
+            default -> { }
+        }
     }
 
     // ================================================================ clics
@@ -216,6 +489,10 @@ public final class Menus {
             case STATS -> {
                 if (slot == 27) openMain(p);
             }
+            case ADMIN -> handleAdmin(p, slot);
+            case HOLOGRAMS -> handleHolograms(p, holder, slot, click);
+            case ZONES -> handleZones(p, holder, slot);
+            case ZONE -> handleZone(p, holder, slot, click);
         }
     }
 
@@ -240,7 +517,7 @@ public final class Menus {
         }
         switch (slot) {
             case 45 -> {
-                if (p.hasPermission(ADMIN_PERM)) plugin.setup().start(p);
+                if (p.hasPermission(ADMIN_PERM)) openAdmin(p);
             }
             case 47 -> {
                 if (current != null) {
@@ -255,6 +532,9 @@ public final class Menus {
                         + "Frappe le porteur pour lui faire lâcher le poulet. <red>Si le poulet meurt, tout le monde perd !");
             }
             case 53 -> openStats(p);
+            case 46 -> {
+                if (current != null && p.hasPermission(ADMIN_PERM) && current.forceStart()) p.closeInventory();
+            }
             case 51 -> {
                 if (current != null) {
                     p.closeInventory();
@@ -304,6 +584,14 @@ public final class Menus {
                 plugin.arenas().save();
                 Msg.sound(p, "ui.button.click", 1f);
                 openArenaAdmin(p, a);
+            }
+            case 21 -> {
+                if (g == null || !g.forceStart()) {
+                    Msg.send(p, "<red>Personne dans le lobby de cette arène (ou partie déjà en cours). <gray>Rejoins-la d'abord.");
+                    return;
+                }
+                p.closeInventory();
+                Msg.send(p, "<green>Lancement forcé de <gold>" + a.name() + "</gold>.");
             }
             case 22 -> {
                 p.closeInventory();
@@ -383,16 +671,21 @@ public final class Menus {
         SetupSession s = plugin.setup().get(p.getUniqueId());
         if (s == null) { p.closeInventory(); return; }
         switch (slot) {
-            case 10 -> { s.cycleMode(); Msg.sound(p, "ui.button.click", 1f); openSetup(p, s); }
-            case 11 -> { s.togglePvp(); Msg.sound(p, "ui.button.click", 1f); openSetup(p, s); }
-            case 13 -> { Items.give(p, Items.zoneTool()); p.closeInventory(); }
-            case 14 -> {
+            case 10 -> { plugin.setup().cycleSize(p); Msg.sound(p, "ui.button.click", 1f); openSetup(p, s); }
+            case 11 -> { s.cycleMode(); Msg.sound(p, "ui.button.click", 1f); openSetup(p, s); }
+            case 12 -> { s.togglePvp(); Msg.sound(p, "ui.button.click", 1f); openSetup(p, s); }
+            case 13 -> { s.cycleFormat(); Msg.sound(p, "ui.button.click", 1f); openSetup(p, s); }
+            case 14 -> { s.toggleFox(); Msg.sound(p, "ui.button.click", 1f); openSetup(p, s); }
+            case 15 -> { s.toggleKit(); Msg.sound(p, "ui.button.click", 1f); openSetup(p, s); }
+            case 16 -> { s.setSkin(plugin.skins().nextChoice(s.skin())); Msg.sound(p, "ui.button.click", 1f); openSetup(p, s); }
+            case 20 -> { Items.give(p, Items.zoneTool()); p.closeInventory(); }
+            case 22 -> {
                 if (s.region() == null) { Msg.send(p, "<red>Définis d'abord la zone avec le bâton."); return; }
                 Items.give(p, Items.enclosTool());
                 p.closeInventory();
             }
-            case 16 -> plugin.setup().validate(p);
-            case 22 -> plugin.setup().cancel(p, true);
+            case 24 -> plugin.setup().validate(p);
+            case 31 -> plugin.setup().cancel(p, true);
             default -> { }
         }
     }

@@ -22,7 +22,7 @@ import java.util.Locale;
 public final class PouletCommand implements TabExecutor {
 
     private static final List<String> PLAYER_SUBS = List.of("pret", "quitter", "rejoindre", "liste", "stats", "classement");
-    private static final List<String> ADMIN_SUBS = List.of("creer", "annuler", "setlobby", "setspawn", "stop", "supprimer", "skin", "reload", "flute", "boussole", "plume", "leaderboard");
+    private static final List<String> ADMIN_SUBS = List.of("creer", "annuler", "setlobby", "setspawn", "stop", "supprimer", "skin", "reload", "flute", "boussole", "plume", "leaderboard", "admin", "lobby", "forcer");
 
     private final FindThePoulet plugin;
 
@@ -191,6 +191,36 @@ public final class PouletCommand implements TabExecutor {
                 plugin.leaderboards().create(stat, p.getLocation().add(0, 2.2, 0));
                 Msg.send(p, "<green>Classement <gold>" + stat.label() + "</gold> placé ici ! <gray>(mis à jour toutes les 20 s)");
             }
+            case "forcer", "forcestart", "start" -> {
+                if (!admin) return noPerm(sender);
+                Game g;
+                if (args.length >= 2) {
+                    g = plugin.games().existing(args[1]);
+                } else {
+                    g = p != null ? plugin.games().of(p) : null;
+                }
+                if (g == null) {
+                    Msg.send(sender, "<red>Aucun joueur dans cette arène. <gray>Usage : /poulet forcer <arène> (ou rejoins-la puis /poulet forcer)");
+                    return true;
+                }
+                if (!g.forceStart()) {
+                    Msg.send(sender, "<red>Impossible : le lobby est vide ou la partie est déjà en cours.");
+                    return true;
+                }
+                Msg.send(sender, "<green>Lancement forcé de <gold>" + g.arena().name() + "</gold> (" + g.size() + " joueur(s)).");
+            }
+            case "admin" -> {
+                if (!admin) return noPerm(sender);
+                if (p == null) return playerOnly(sender);
+                Menus.openAdmin(p);
+            }
+            case "lobby" -> {
+                if (!admin) return noPerm(sender);
+                if (p == null) return playerOnly(sender);
+                fr.simon.findthepoulet.util.Items.give(p, fr.simon.findthepoulet.util.Items.lobbyTool());
+                Msg.send(p, "<gold>Outil zone lobby : <white>clic gauche <gray>= coin 1, <white>clic droit <gray>= coin 2, "
+                        + "<white>clic droit dans l'air <gray>= menu.");
+            }
             case "reload" -> {
                 if (!admin) return noPerm(sender);
                 plugin.reload();
@@ -211,10 +241,13 @@ public final class PouletCommand implements TabExecutor {
         s.sendMessage(Msg.mm("<yellow>/poulet stats [joueur] <gray>- statistiques"));
         s.sendMessage(Msg.mm("<yellow>/poulet classement <gray>- classements"));
         if (s.hasPermission(Menus.ADMIN_PERM)) {
+            s.sendMessage(Msg.mm("<aqua>/poulet admin <gray>- menu des outils admin"));
+            s.sendMessage(Msg.mm("<aqua>/poulet lobby <gray>- outil de zone lobby / spawn protégée"));
             s.sendMessage(Msg.mm("<aqua>/poulet creer [nom] <gray>- créer une arène"));
             s.sendMessage(Msg.mm("<aqua>/poulet annuler <gray>- annuler la création"));
             s.sendMessage(Msg.mm("<aqua>/poulet setlobby <gray>- lobby d'attente"));
             s.sendMessage(Msg.mm("<aqua>/poulet setspawn <gray>- spawn de fin de partie"));
+            s.sendMessage(Msg.mm("<aqua>/poulet forcer [arène] <gray>- lancer la partie même seul / sans les prêts"));
             s.sendMessage(Msg.mm("<aqua>/poulet stop <arène> <gray>- arrêter une partie"));
             s.sendMessage(Msg.mm("<aqua>/poulet supprimer <arène> <gray>- supprimer une arène"));
             s.sendMessage(Msg.mm("<aqua>/poulet skin [nom] <gray>- aperçu d'un déguisement"));
@@ -251,7 +284,7 @@ public final class PouletCommand implements TabExecutor {
                 for (String o : opts) if (o.startsWith(args[1].toLowerCase(Locale.ROOT))) out.add(o);
             } else if (sub.equals("skin")) {
                 for (String k : plugin.skins().keys()) if (k.startsWith(args[1].toLowerCase(Locale.ROOT))) out.add(k);
-            } else if (sub.equals("rejoindre") || sub.equals("stop") || sub.equals("supprimer")) {
+            } else if (sub.equals("rejoindre") || sub.equals("stop") || sub.equals("supprimer") || sub.equals("forcer")) {
                 for (Arena a : plugin.arenas().all()) {
                     if (a.name().toLowerCase(Locale.ROOT).startsWith(args[1].toLowerCase(Locale.ROOT))) out.add(a.name());
                 }

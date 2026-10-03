@@ -33,6 +33,7 @@ public final class FindThePoulet extends JavaPlugin {
     private SkinManager skins;
     private StatsManager stats;
     private LeaderboardManager leaderboards;
+    private fr.simon.findthepoulet.zone.ZoneManager zones;
 
     public static FindThePoulet get() {
         return instance;
@@ -49,6 +50,8 @@ public final class FindThePoulet extends JavaPlugin {
         stats.load();
         leaderboards = new LeaderboardManager(this);
         leaderboards.load();
+        zones = new fr.simon.findthepoulet.zone.ZoneManager(this);
+        zones.load();
 
         skins = new SkinManager(this);
         skins.load();
@@ -62,6 +65,7 @@ public final class FindThePoulet extends JavaPlugin {
         pm.registerEvents(new MenuListener(this), this);
         pm.registerEvents(new SetupListener(this), this);
         pm.registerEvents(new GameListener(this), this);
+        pm.registerEvents(new fr.simon.findthepoulet.listener.ZoneListener(this), this);
 
         PluginCommand command = getCommand("poulet");
         if (command != null) {
@@ -88,6 +92,7 @@ public final class FindThePoulet extends JavaPlugin {
     public SkinManager skins() { return skins; }
     public StatsManager stats() { return stats; }
     public LeaderboardManager leaderboards() { return leaderboards; }
+    public fr.simon.findthepoulet.zone.ZoneManager zones() { return zones; }
 
     /** /poulet reload : config + déguisements (les arènes ne bougent pas). */
     public void reload() {

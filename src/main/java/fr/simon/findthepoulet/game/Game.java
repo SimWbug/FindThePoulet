@@ -103,6 +103,8 @@ public final class Game {
     private int fleeCycles, restCycles;
     private int eggTimer;
     private int pauseCycles;
+    /** Chunk du poulet maintenu chargé (grandes arènes). */
+    private long chickenChunk = Long.MIN_VALUE;
 
     // ---- temps / HUD
     private int duration;
@@ -112,6 +114,8 @@ public final class Game {
     private int round;
     private boolean suddenDeath;
     private BukkitTask countdownTask;
+    /** Lancement forcé par un admin : ignore le nombre minimum de joueurs et les "prêt". */
+    private boolean forced;
     private BukkitTask gameTask;
     private Scoreboard board;
     private Objective sidebar;
@@ -290,12 +294,32 @@ public final class Game {
         startCountdown();
     }
 
+    /**
+     * Lancement forcé (admin) : démarre même avec un seul joueur et sans que tout le monde soit prêt.
+     * @return false s'il n'y a personne dans le lobby ou si une partie tourne déjà.
+     */
+    public boolean forceStart() {
+        if (players.isEmpty() || state == State.RUNNING || state == State.ENDING) return false;
+        forced = true;
+        if (state == State.STARTING) {
+            broadcast("<gold>Lancement forcé par un administrateur !");
+            return true;
+        }
+        broadcast("<gold>Lancement forcé par un administrateur !");
+        startCountdown();
+        return true;
+    }
+
     private void startCountdown() {
         state = State.STARTING;
-        countdown = plugin.startCountdown();
-        broadcast("<green>Tout le monde est prêt ! La partie commence dans <yellow>" + countdown + "</yellow> secondes.");
+        countdown = forced ? Math.min(5, plugin.startCountdown()) : plugin.startCountdown();
+        broadcast((forced ? "<gold>Démarrage forcé" : "<green>Tout le monde est prêt !") + " <green>La partie commence dans <yellow>" + countdown + "</yellow> secondes.");
         countdownTask = Bukkit.getScheduler().runTaskTimer(plugin, () -> {
-            if (players.size() < plugin.minPlayers() || !ready.containsAll(players)) {
+            if (players.isEmpty()) {
+                cancelCountdown("<red>Démarrage annulé : plus personne.");
+                return;
+            }
+            if (!forced && (players.size() < plugin.minPlayers() || !ready.containsAll(players))) {
                 cancelCountdown("<red>Démarrage annulé : tout le monde n'est pas prêt.");
                 return;
             }
@@ -316,6 +340,7 @@ public final class Game {
     }
 
     private void cancelCountdown(String reason) {
+        forced = false;
         if (countdownTask != null) {
             countdownTask.cancel();
             countdownTask = null;
@@ -357,7 +382,9 @@ public final class Game {
         switch (state) {
             case WAITING -> checkStart();
             case STARTING -> {
-                if (players.size() < plugin.minPlayers()) cancelCountdown("<red>Pas assez de joueurs, démarrage annulé.");
+                if (players.isEmpty() || (!forced && players.size() < plugin.minPlayers())) {
+                    cancelCountdown("<red>Pas assez de joueurs, démarrage annulé.");
+                }
             }
             case RUNNING -> {
                 if (players.isEmpty()) end(null, "<gray>Tous les joueurs sont partis.");
@@ -377,6 +404,7 @@ public final class Game {
             return;
         }
         state = State.RUNNING;
+        forced = false;
         restorer = new BlockRestorer(arena.region());
         trackedEntities.clear();
         grabCooldown.clear();
@@ -540,7 +568,10 @@ public final class Game {
             broadcast("<yellow>Le poulet a réapparu quelque part dans l'arène !");
         }
 
-        if (chicken != null && pauseCycles == 0 && chickenTick()) return;
+        if (chicken != null && pauseCycles == 0) {
+            followChickenChunk();
+            if (chickenTick()) return;
+        }
         updateCompasses();
         if (ticks % 4 == 0) secondTick();
     }
@@ -696,6 +727,7 @@ public final class Game {
         if (plugin.skins().isEnabled()) plugin.skins().applyVariant(c);
         if (suddenDeath) c.setGlowing(true);
         chicken = c;
+        followChickenChunk();
         lastCarrier = null;
         carrierSafeUsed = false;
         fleeCycles = 0;
@@ -713,14 +745,19 @@ public final class Game {
         Region r = arena.region();
         Location center = arena.enclosureCenter();
         ThreadLocalRandom rnd = ThreadLocalRandom.current();
-        for (int i = 0; i < 400; i++) {
+        // Chaque colonne testée charge un chunk : on essaie plusieurs hauteurs par colonne
+        // (surface ou cavernes) pour limiter les chargements sur les grandes arènes.
+        for (int i = 0; i < 60; i++) {
             int x = rnd.nextInt(r.minX() + 1, r.maxX());
             int z = rnd.nextInt(r.minZ() + 1, r.maxZ());
             double dx = x + 0.5 - center.getX(), dz = z + 0.5 - center.getZ();
             if (dx * dx + dz * dz < minD * minD) continue;
             int top = w.getHighestBlockYAt(x, z);
-            int y = rnd.nextInt(w.getMinHeight() + 1, top + 2);
-            if (Locs.standable(w, x, y, z)) return Locs.center(w, x, y, z);
+            if (rnd.nextInt(3) == 0 && Locs.standable(w, x, top + 1, z)) return Locs.center(w, x, top + 1, z);
+            for (int k = 0; k < 16; k++) {
+                int y = rnd.nextInt(w.getMinHeight() + 1, top + 2);
+                if (Locs.standable(w, x, y, z)) return Locs.center(w, x, y, z);
+            }
         }
         int x = rnd.nextBoolean() ? r.minX() + 3 : r.maxX() - 3;
         int z = rnd.nextBoolean() ? r.minZ() + 3 : r.maxZ() - 3;
@@ -855,7 +892,34 @@ public final class Game {
                 + " ! <dark_red>Tout le monde a perdu.");
     }
 
+    /** Garde le chunk du poulet chargé, sinon il disparaîtrait loin des joueurs (grandes arènes). */
+    private void followChickenChunk() {
+        if (chicken == null || !chicken.isValid()) return;
+        Location l = chicken.getLocation();
+        long key = (((long) (l.getBlockX() >> 4)) << 32) | ((l.getBlockZ() >> 4) & 0xffffffffL);
+        if (key == chickenChunk) return;
+        releaseChickenChunk();
+        chickenChunk = key;
+        l.getWorld().addPluginChunkTicket(l.getBlockX() >> 4, l.getBlockZ() >> 4, plugin);
+    }
+
+    private void releaseChickenChunk() {
+        if (chickenChunk == Long.MIN_VALUE) return;
+        World w = arena.world();
+        int cx = (int) (chickenChunk >> 32), cz = (int) chickenChunk;
+        chickenChunk = Long.MIN_VALUE;
+        if (w == null || bigArena() || !arena.region().overlaps(new Region(w.getName(), cx << 4, cz << 4, (cx << 4) + 15, (cz << 4) + 15))) {
+            if (w != null) w.removePluginChunkTicket(cx, cz, plugin);
+        }
+    }
+
+    /** Au-delà de 128×128, on ne garde pas toute l'arène chargée (trop de chunks). */
+    private boolean bigArena() {
+        return arena.region().size() > 128;
+    }
+
     private void removeChicken() {
+        releaseChickenChunk();
         if (skin != null) {
             skin.remove();
             skin = null;
@@ -1283,6 +1347,7 @@ public final class Game {
         campSeconds.clear();
         fox = null;
         foxTeam = null;
+        forced = false;
         lastCarrier = null;
         gameSkin = null;
         suddenDeath = false;
@@ -1343,7 +1408,7 @@ public final class Game {
 
     private void setChunkTickets(boolean add) {
         World w = arena.world();
-        if (w == null) return;
+        if (w == null || bigArena()) return;
         Region r = arena.region();
         for (int cx = r.minX() >> 4; cx <= r.maxX() >> 4; cx++) {
             for (int cz = r.minZ() >> 4; cz <= r.maxZ() >> 4; cz++) {

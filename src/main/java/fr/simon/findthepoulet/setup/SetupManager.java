@@ -41,17 +41,8 @@ public final class SetupManager {
         for (Map.Entry<UUID, SetupSession> e : sessions.entrySet()) {
             Region r = e.getValue().region;
             Player p = Bukkit.getPlayer(e.getKey());
-            if (r == null || p == null || !p.getWorld().getName().equals(r.world())) continue;
-            double y = p.getLocation().getY() + 1;
-            double x0 = r.minX(), x1 = r.maxX() + 1, z0 = r.minZ(), z1 = r.maxZ() + 1;
-            for (double d = 0; d <= r.size(); d += 1.5) {
-                for (double h = -1; h <= 2; h += 3) {
-                    p.spawnParticle(Particle.HAPPY_VILLAGER, x0 + d, y + h, z0, 1, 0, 0, 0, 0);
-                    p.spawnParticle(Particle.HAPPY_VILLAGER, x0 + d, y + h, z1, 1, 0, 0, 0, 0);
-                    p.spawnParticle(Particle.HAPPY_VILLAGER, x0, y + h, z0 + d, 1, 0, 0, 0, 0);
-                    p.spawnParticle(Particle.HAPPY_VILLAGER, x1, y + h, z0 + d, 1, 0, 0, 0, 0);
-                }
-            }
+            if (r == null || p == null) continue;
+            fr.simon.findthepoulet.util.Outline.draw(p, r.world(), r.minX(), r.minZ(), r.maxX(), r.maxZ(), Particle.HAPPY_VILLAGER);
         }
     }
 
@@ -70,7 +61,9 @@ public final class SetupManager {
             Msg.send(p, "<red>Quitte ta partie avant de créer une arène.");
             return;
         }
-        sessions.put(p.getUniqueId(), new SetupSession());
+        SetupSession session = new SetupSession();
+        session.size = plugin.arenaSize();
+        sessions.put(p.getUniqueId(), session);
         p.closeInventory();
         askName(p);
     }
@@ -103,7 +96,8 @@ public final class SetupManager {
         Items.give(p, Items.zoneTool());
         Msg.send(p, "<green>Arène <gold>" + name + "</gold> !");
         Msg.send(p, "<yellow>Étape 2 : <white>fais un clic droit au sol avec le <aqua>Bâton de zone</aqua> "
-                + "<white>pour créer la zone (" + plugin.arenaSize() + "×" + plugin.arenaSize() + " blocs autour de ce point).");
+                + "<white>pour créer la zone (" + s.size + "×" + s.size + " blocs autour de ce point).");
+        Msg.send(p, "<gray>Tu peux changer la taille (64 à 1024) dans le menu : <yellow>clic droit dans l'air <gray>avec le bâton.");
         Msg.sound(p, "entity.experience_orb.pickup", 1f);
     }
 
@@ -114,12 +108,9 @@ public final class SetupManager {
             Msg.send(p, "<red>Écris d'abord le nom de l'arène dans le chat.");
             return;
         }
-        Region region = Region.around(block.getLocation(), plugin.arenaSize());
-        Arena other = plugin.arenas().overlapping(region);
-        if (other != null) {
-            Msg.send(p, "<red>Cette zone chevauche l'arène <yellow>" + other.name() + "</yellow>. Choisis un autre endroit.");
-            return;
-        }
+        Region region = Region.around(block.getLocation(), s.size);
+        if (!canUse(p, region)) return;
+        s.zoneCenter = block.getLocation();
         if (s.hasEnclosure() && !fits(region, s.ex, s.ez, s.n)) {
             EnclosureBuilder.undo(s.enclosureOriginal);
             s.enclosureOriginal = null;
@@ -179,6 +170,55 @@ public final class SetupManager {
         Msg.sound(p, "block.wood.place", 0.8f);
     }
 
+    /** Vérifie qu'une zone ne chevauche ni une autre arène, ni une zone lobby protégée. */
+    private boolean canUse(Player p, Region region) {
+        Arena other = plugin.arenas().overlapping(region);
+        if (other != null) {
+            Msg.send(p, "<red>Cette zone chevauche l'arène <yellow>" + other.name() + "</yellow>. Choisis un autre endroit ou une taille plus petite.");
+            return false;
+        }
+        var zone = plugin.zones().overlapping(region);
+        if (zone != null) {
+            Msg.send(p, "<red>Cette zone chevauche la zone protégée <yellow>" + zone.name() + "</yellow>. Choisis un autre endroit ou une taille plus petite.");
+            return false;
+        }
+        return true;
+    }
+
+    /** Taille suivante (64 → 128 → 256 → 512 → 1024 → 64) ; recalcule la zone si elle est déjà placée. */
+    public void cycleSize(Player p) {
+        SetupSession s = sessions.get(p.getUniqueId());
+        if (s == null) return;
+        java.util.List<Integer> sizes = new java.util.ArrayList<>(plugin.getConfig().getIntegerList("arena-sizes"));
+        sizes.removeIf(v -> v < 32);
+        if (sizes.isEmpty()) sizes = java.util.List.of(64, 128, 256, 512, 1024);
+        int start = Math.max(0, sizes.indexOf(s.size));
+        for (int k = 1; k <= sizes.size(); k++) {
+            int next = sizes.get((start + k) % sizes.size());
+            if (s.zoneCenter == null) {
+                s.size = next;
+                return;
+            }
+            Region region = Region.around(s.zoneCenter, next);
+            if (plugin.arenas().overlapping(region) != null || plugin.zones().overlapping(region) != null) {
+                Msg.send(p, "<gray>" + next + "×" + next + " déborde sur une autre arène ou zone protégée, taille suivante...");
+                continue;
+            }
+            if (s.hasEnclosure() && !fits(region, s.ex, s.ez, s.n)) {
+                EnclosureBuilder.undo(s.enclosureOriginal);
+                s.enclosureOriginal = null;
+                Msg.send(p, "<gold>L'enclos ne tenait plus dans la zone : il a été retiré, replace-le avec la faux.");
+            }
+            s.region = region;
+            s.size = next;
+            if (next >= 512) {
+                Msg.send(p, "<gold>Grande arène (" + next + "×" + next + ") : <gray>pré-génère la zone (plugin Chunky par ex.) "
+                        + "pour éviter les lags au lancement des parties.");
+            }
+            return;
+        }
+    }
+
     private static boolean fits(Region r, int ex, int ez, int n) {
         return ex - 1 - r.minX() >= MARGIN && r.maxX() - (ex + n) >= MARGIN
                 && ez - 1 - r.minZ() >= MARGIN && r.maxZ() - (ez + n) >= MARGIN;
@@ -199,12 +239,12 @@ public final class SetupManager {
             Msg.send(p, "<red>Une arène nommée <yellow>" + s.name + "</yellow> existe déjà.");
             return;
         }
-        Arena other = plugin.arenas().overlapping(s.region);
-        if (other != null) {
-            Msg.send(p, "<red>La zone chevauche l'arène <yellow>" + other.name() + "</yellow>.");
-            return;
-        }
+        if (!canUse(p, s.region)) return;
         Arena arena = new Arena(s.name, s.region, s.mode, s.pvp, true, s.ex, s.ey, s.ez, s.n);
+        arena.setFormat(s.format);
+        arena.setFox(s.fox);
+        arena.setKit(s.kit);
+        arena.setSkin(s.skin);
         plugin.arenas().add(arena);
         sessions.remove(p.getUniqueId());
         cleanup(p);
