@@ -52,6 +52,7 @@ Réglages : section `flute` de `config.yml` · test : `/poulet flute` (admin).
 - **Traînée de plumes** derrière le porteur (particules + plumes au sol), sans ralentissement.
 - **Anti-camping** : un joueur sans poulet qui reste 10 s près de l'enclos est repoussé et ralenti ;
   le porteur est intouchable 3 s en arrivant près de l'enclos.
+- **Flèche d'indice** : toutes les minutes, une flèche pointe vers le poulet pendant 10 s (le porteur voit l'enclos).
 - **Mort subite** : les 3 dernières minutes, le poulet brille à travers les murs et pond plus souvent.
 - **Coffres cachés** : flûte à poulet, **boussole à poulet** (l'aiguille pointe vers lui 15 s, distance affichée)
   et **plume de saut** (bond en avant sans dégâts de chute, 3 utilisations).
@@ -78,6 +79,7 @@ Victoires, parties, poulets attrapés, poulets ramenés, poulets tués, élimina
 | `/poulet creer [nom]` / `annuler` | création d'arène (admin) |
 | `/poulet setlobby` / `setspawn` | lobby d'attente / spawn de fin de partie (admin) |
 | `/poulet forcer [arène]` | lancer la partie même seul, sans attendre les « prêt » (admin) |
+| `/poulet tppoulet [arène]` | se téléporter au poulet (admin) |
 | `/poulet stop <arène>` / `supprimer <arène>` | admin |
 | `/poulet stats [joueur]` / `classement` | statistiques / classements |
 | `/poulet leaderboard <stat>` / `supprimer` / `liste` | hologrammes de classement (admin) |
