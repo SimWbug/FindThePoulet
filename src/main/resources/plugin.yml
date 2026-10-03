@@ -7,7 +7,7 @@ author: Simon
 commands:
   poulet:
     description: Ouvre le menu Find The Poulet
-    usage: /poulet [pret|quitter|rejoindre|liste|creer|setlobby|setspawn|stop|supprimer|stats|classement|skin|reload|flute|leaderboard|admin|lobby|forcer]
+    usage: /poulet [pret|quitter|rejoindre|liste|creer|setlobby|setspawn|stop|supprimer|stats|classement|skin|reload|flute|leaderboard|admin|lobby|forcer|tppoulet]
     aliases: [ftp, findthepoulet]
 permissions:
   findthepoulet.admin:

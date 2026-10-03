@@ -109,12 +109,28 @@ flute:
 # avec un objet chacun. Ils disparaissent au reset de l'arène.
 loot:
   enabled: true
-  chests-per-player-min: 2   # nombre de coffres = entre min et max par joueur
-  chests-per-player-max: 3
-  weights:                   # chances relatives de chaque objet
-    flute: 40
-    compass: 25
-    feather: 35
+  chests-per-player-min: 3   # coffres au début = entre min et max par joueur
+  chests-per-player-max: 4
+  items-per-chest-min: 1
+  items-per-chest-max: 2
+  # Nouvelle vague de coffres pendant la partie (0 = désactivé)
+  wave-interval-seconds: 120
+  wave-chests-per-player: 1
+  # Contenu possible des coffres, avec leur chance relative.
+  # flute / compass / feather = objets spéciaux du plugin ; sinon "MATERIAL:quantité"
+  items:
+    flute: 25
+    compass: 15
+    feather: 20
+    "SNOWBALL:8": 20        # toucher le porteur avec une boule de neige lui fait lâcher le poulet !
+    "COOKED_BEEF:4": 15
+    "GOLDEN_APPLE:1": 8
+    "ENDER_PEARL:1": 6
+    "STONE_SWORD:1": 8
+    "BOW:1": 4
+    "ARROW:12": 6
+    "COBWEB:2": 8
+    "SPLASH_POTION:1": 0    # exemple désactivé (0)
 
 # Boussole à poulet : une vraie boussole dont l'aiguille pointe vers le poulet une fois activée
 compass:
@@ -154,10 +170,30 @@ anti-camp:
   max-seconds: 10                # un joueur SANS poulet qui y reste plus longtemps est repoussé
   carrier-protection-seconds: 3  # le porteur ne peut pas être frappé en arrivant dans la zone
 
-# Mort subite : les X dernières secondes, le poulet brille à travers les murs et pond plus souvent
+# Jour au début de la partie
+#   mode: world  -> l'heure du monde passe au jour (tout le monde le voit)
+#         player -> seuls les joueurs de la partie voient le jour (les monstres suivent l'heure réelle)
+#         off    -> on ne touche à rien
+#   lock: true   -> le jour reste pendant toute la partie (sinon la nuit tombe au bout de ~9 min)
+day:
+  mode: world
+  time: 1000
+  lock: true
+  clear-weather: true
+
+# Flèche d'indice : toutes les X secondes, une flèche pointe vers le poulet pendant Y secondes
+# (barre en haut de l'écran + flèche de particules devant le joueur). Le porteur, lui, voit l'enclos.
+hint-arrow:
+  enabled: true
+  interval-seconds: 60
+  duration-seconds: 10
+
+# Mort subite : les X dernières secondes, le poulet brille, un faisceau rouge/or visible de loin
+# s'élève au-dessus de lui (à travers les murs), il pond plus souvent
 sudden-death:
   enabled: true
   seconds: 180
+  permanent-arrow: true   # la flèche d'indice reste affichée pendant toute la mort subite
 
 # ==================================================
 #   Modes de jeu (réglables par arène dans le menu admin)

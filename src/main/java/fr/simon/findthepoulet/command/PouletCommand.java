@@ -22,7 +22,7 @@ import java.util.Locale;
 public final class PouletCommand implements TabExecutor {
 
     private static final List<String> PLAYER_SUBS = List.of("pret", "quitter", "rejoindre", "liste", "stats", "classement");
-    private static final List<String> ADMIN_SUBS = List.of("creer", "annuler", "setlobby", "setspawn", "stop", "supprimer", "skin", "reload", "flute", "boussole", "plume", "leaderboard", "admin", "lobby", "forcer");
+    private static final List<String> ADMIN_SUBS = List.of("creer", "annuler", "setlobby", "setspawn", "stop", "supprimer", "skin", "reload", "flute", "boussole", "plume", "leaderboard", "admin", "lobby", "forcer", "tppoulet");
 
     private final FindThePoulet plugin;
 
@@ -209,6 +209,29 @@ public final class PouletCommand implements TabExecutor {
                 }
                 Msg.send(sender, "<green>Lancement forcé de <gold>" + g.arena().name() + "</gold> (" + g.size() + " joueur(s)).");
             }
+            case "tppoulet", "tpchicken" -> {
+                if (!admin) return noPerm(sender);
+                if (p == null) return playerOnly(sender);
+                Game g = args.length >= 2 ? plugin.games().existing(args[1]) : plugin.games().of(p);
+                if (g == null) {
+                    // Pas précisé et pas en partie : on prend la seule partie en cours s'il n'y en a qu'une
+                    List<Game> running = new ArrayList<>();
+                    for (Arena a : plugin.arenas().all()) {
+                        Game ga = plugin.games().existing(a.name());
+                        if (ga != null && ga.isRunning()) running.add(ga);
+                    }
+                    if (running.size() == 1) g = running.get(0);
+                }
+                if (g == null || !g.isRunning()) {
+                    Msg.send(p, "<red>Aucune partie en cours. <gray>Usage : /poulet tppoulet [arène]");
+                    return true;
+                }
+                org.bukkit.Location l = g.chickenLocation();
+                if (l == null) { Msg.send(p, "<red>Le poulet n'est pas là pour l'instant (entre deux manches ?)."); return true; }
+                p.teleport(l.clone().add(0, 1, 0));
+                Msg.send(p, "<green>Téléporté au poulet de <gold>" + g.arena().name() + "</gold>."
+                        + (plugin.games().of(p) == null ? " <gray>(astuce : passe en spectateur pour ne pas gêner)" : ""));
+            }
             case "admin" -> {
                 if (!admin) return noPerm(sender);
                 if (p == null) return playerOnly(sender);
@@ -248,6 +271,7 @@ public final class PouletCommand implements TabExecutor {
             s.sendMessage(Msg.mm("<aqua>/poulet setlobby <gray>- lobby d'attente"));
             s.sendMessage(Msg.mm("<aqua>/poulet setspawn <gray>- spawn de fin de partie"));
             s.sendMessage(Msg.mm("<aqua>/poulet forcer [arène] <gray>- lancer la partie même seul / sans les prêts"));
+            s.sendMessage(Msg.mm("<aqua>/poulet tppoulet [arène] <gray>- se téléporter au poulet"));
             s.sendMessage(Msg.mm("<aqua>/poulet stop <arène> <gray>- arrêter une partie"));
             s.sendMessage(Msg.mm("<aqua>/poulet supprimer <arène> <gray>- supprimer une arène"));
             s.sendMessage(Msg.mm("<aqua>/poulet skin [nom] <gray>- aperçu d'un déguisement"));
@@ -284,7 +308,7 @@ public final class PouletCommand implements TabExecutor {
                 for (String o : opts) if (o.startsWith(args[1].toLowerCase(Locale.ROOT))) out.add(o);
             } else if (sub.equals("skin")) {
                 for (String k : plugin.skins().keys()) if (k.startsWith(args[1].toLowerCase(Locale.ROOT))) out.add(k);
-            } else if (sub.equals("rejoindre") || sub.equals("stop") || sub.equals("supprimer") || sub.equals("forcer")) {
+            } else if (sub.equals("rejoindre") || sub.equals("stop") || sub.equals("supprimer") || sub.equals("forcer") || sub.equals("tppoulet")) {
                 for (Arena a : plugin.arenas().all()) {
                     if (a.name().toLowerCase(Locale.ROOT).startsWith(args[1].toLowerCase(Locale.ROOT))) out.add(a.name());
                 }

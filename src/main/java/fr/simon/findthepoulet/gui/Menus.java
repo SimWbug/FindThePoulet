@@ -164,6 +164,7 @@ public final class Menus {
         inv.setItem(21, Items.build(Material.LIME_CANDLE, "<green><bold>Forcer le lancement",
                 "<gray>Lance la partie avec les joueurs du lobby,", "<gray>même seul et sans attendre les \"prêt\""));
         inv.setItem(22, Items.build(Material.ENDER_PEARL, "<aqua><bold>Se téléporter", "<gray>Devant l'enclos"));
+        inv.setItem(25, Items.build(Material.EGG, "<gold><bold>TP au poulet", "<gray>Pendant une partie en cours"));
         inv.setItem(23, Items.build(Material.REDSTONE_BLOCK, "<red><bold>Arrêter la partie",
                 "<gray>Arrête la partie / le lobby en cours", "<gray>et remet l'arène à zéro"));
         inv.setItem(24, Items.build(Material.TNT, "<dark_red><bold>Supprimer l'arène",
@@ -584,6 +585,12 @@ public final class Menus {
                 plugin.arenas().save();
                 Msg.sound(p, "ui.button.click", 1f);
                 openArenaAdmin(p, a);
+            }
+            case 25 -> {
+                org.bukkit.Location l = g != null && g.isRunning() ? g.chickenLocation() : null;
+                if (l == null) { Msg.send(p, "<red>Aucune partie en cours (ou poulet absent)."); return; }
+                p.closeInventory();
+                p.teleport(l.clone().add(0, 1, 0));
             }
             case 21 -> {
                 if (g == null || !g.forceStart()) {

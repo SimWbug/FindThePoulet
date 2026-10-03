@@ -113,6 +113,13 @@ public final class Game {
     private int ticks;
     private int round;
     private boolean suddenDeath;
+    /** Flèche d'indice : secondes avant la prochaine, et cycles (5 ticks) restants d'affichage. */
+    private int hintTimer;
+    private int lootTimer;
+    /** On a bloqué le cycle jour/nuit du monde pour cette partie (à rétablir à la fin). */
+    private boolean lockedDaylight;
+    private int hintCycles;
+    private final Map<UUID, BossBar> hintBars = new HashMap<>();
     private BukkitTask countdownTask;
     /** Lancement forcé par un admin : ignore le nombre minimum de joueurs et les "prêt". */
     private boolean forced;
@@ -413,12 +420,16 @@ public final class Game {
         round = 1;
         suddenDeath = false;
         eggTimer = eggInterval();
+        hintTimer = hintInterval();
+        hintCycles = 0;
+        lootTimer = lootInterval();
         duration = arena.format() == GameFormat.ROUNDS
                 ? Math.max(30, cfg().getInt("rounds.game-duration-seconds", 900))
                 : plugin.gameDuration();
         timeLeft = duration;
 
         setChunkTickets(true);
+        applyDaytime(w);
         pickFox();
         buildTeams();
         buildScoreboard();
@@ -428,6 +439,7 @@ public final class Game {
         boolean solo = arena.mode() == TeamMode.SOLO;
         for (Player p : online()) {
             Players.reset(p, GameMode.SURVIVAL); // la tête de poulet disparaît de la barre
+            applyPlayerDaytime(p);
             p.teleport(respawnLocation());
             applyBorder(p);
             p.setScoreboard(board);
@@ -573,6 +585,7 @@ public final class Game {
             if (chickenTick()) return;
         }
         updateCompasses();
+        if (hintCycles > 0) hintTick();
         if (ticks % 4 == 0) secondTick();
     }
 
@@ -618,6 +631,15 @@ public final class Game {
             layEgg();
             eggTimer = eggInterval();
         }
+        if (cfg().getBoolean("hint-arrow.enabled", true) && --hintTimer <= 0) {
+            hintTimer = hintInterval();
+            if (chicken != null && chicken.isValid()) startHint();
+        }
+        if (cfg().getBoolean("loot.enabled", true) && lootInterval() > 0 && --lootTimer <= 0) {
+            lootTimer = lootInterval();
+            lootWave();
+        }
+        if (suddenDeath) suddenDeathEffects();
         antiCamp();
         tickEliminated();
         if (!suddenDeath && cfg().getBoolean("sudden-death.enabled", true)
@@ -726,6 +748,14 @@ public final class Game {
         c.getPersistentDataContainer().set(Items.chickenKey(), PersistentDataType.BYTE, (byte) 1);
         if (plugin.skins().isEnabled()) plugin.skins().applyVariant(c);
         if (suddenDeath) c.setGlowing(true);
+        if (board != null) {
+            Team ct = board.getTeam("ftpchicken");
+            if (ct == null) {
+                ct = board.registerNewTeam("ftpchicken");
+                ct.color(net.kyori.adventure.text.format.NamedTextColor.GOLD);
+            }
+            ct.addEntry(c.getUniqueId().toString()); // contour doré quand il brille
+        }
         chicken = c;
         followChickenChunk();
         lastCarrier = null;
@@ -933,15 +963,40 @@ public final class Game {
 
     // ================================================================ mort subite
 
+    /**
+     * Mort subite, chaque seconde. Le contour lumineux (glowing) ne se voit que si le client "voit" le poulet,
+     * c'est-à-dire à moins de ~48 blocs (distance de suivi des animaux). Pour le voir de loin, à travers
+     * les murs et le sol, on ajoute un faisceau de particules envoyé à longue distance (jusqu'à 512 blocs).
+     */
+    private void suddenDeathEffects() {
+        if (chicken == null || !chicken.isValid()) return;
+        chicken.setGlowing(true);
+        Location l = chicken.getLocation();
+        Particle.DustOptions red = new Particle.DustOptions(Color.RED, 2.5f);
+        Particle.DustOptions gold = new Particle.DustOptions(Color.YELLOW, 2.5f);
+        for (int i = 0; i < 40; i++) {
+            Location at = l.clone().add(0, 1.5 + i * 1.0, 0);
+            l.getWorld().spawnParticle(Particle.DUST, at, 2, 0.08, 0.3, 0.08, 0, i % 2 == 0 ? red : gold, true);
+        }
+        l.getWorld().spawnParticle(Particle.END_ROD, l.clone().add(0, 1.2, 0), 6, 0.3, 0.3, 0.3, 0.02, null, true);
+        // La flèche d'indice reste affichée en permanence pendant la mort subite
+        if (cfg().getBoolean("sudden-death.permanent-arrow", true)) {
+            int cycles = 4 * 2;
+            if (hintCycles < cycles) hintCycles = cycles;
+        }
+    }
+
     private void startSuddenDeath() {
         suddenDeath = true;
         if (chicken != null && chicken.isValid()) chicken.setGlowing(true);
+        suddenDeathEffects();
         eggTimer = Math.min(eggTimer, eggInterval());
         for (Player p : online()) {
             title(p, "<red><bold>☠ MORT SUBITE ☠", "<yellow>Le poulet brille à travers les murs !", 60);
             Msg.sound(p, "entity.ender_dragon.growl", 1.3f);
         }
-        broadcast("<red><bold>MORT SUBITE !</bold> <yellow>Le poulet est visible à travers les murs et pond plus souvent. Dernière chance !");
+        broadcast("<red><bold>MORT SUBITE !</bold> <yellow>Un faisceau rouge et or s'élève du poulet, une flèche pointe vers lui "
+                + "et il pond plus souvent. Dernière chance !");
     }
 
     // ================================================================ anti-camping
@@ -1027,50 +1082,116 @@ public final class Game {
 
     // ================================================================ objets des coffres
 
-    /** Coffres cachés au hasard (surface ou cavernes), 2 à 3 par joueur, un objet dans chacun. */
+    /** Coffres du début de partie : entre min et max par joueur. */
     private void spawnLootChests() {
         if (!cfg().getBoolean("loot.enabled", true)) return;
-        int min = Math.max(0, cfg().getInt("loot.chests-per-player-min", 2));
-        int max = Math.max(min, cfg().getInt("loot.chests-per-player-max", 3));
+        int min = Math.max(0, cfg().getInt("loot.chests-per-player-min", 3));
+        int max = Math.max(min, cfg().getInt("loot.chests-per-player-max", 4));
         ThreadLocalRandom rnd = ThreadLocalRandom.current();
         int count = 0;
         for (int i = 0; i < players.size(); i++) count += rnd.nextInt(min, max + 1);
-        count = Math.min(count, 64);
+        int placed = placeChests(Math.min(count, 80));
+        if (placed > 0) {
+            broadcast("<yellow>" + placed + " coffres <gray>sont cachés dans l'arène : <gold>flûtes, boussoles, plumes, boules de neige...</gold>");
+        }
+    }
 
+    /** Nouvelle vague de coffres pendant la partie. */
+    private void lootWave() {
+        int perPlayer = Math.max(0, cfg().getInt("loot.wave-chests-per-player", 1));
+        int placed = placeChests(Math.min(Math.max(1, active().size() * perPlayer), 40));
+        if (placed <= 0) return;
+        for (Player p : online()) {
+            Msg.sound(p, "block.chest.open", 1.3f);
+            p.sendMessage(Msg.mm(Msg.PREFIX + "<yellow>" + placed + " nouveaux coffres <gray>sont apparus dans l'arène !"));
+        }
+    }
+
+    /** Place des coffres au hasard (surface ou cavernes). @return le nombre de coffres posés. */
+    private int placeChests(int count) {
+        ThreadLocalRandom rnd = ThreadLocalRandom.current();
+        int minItems = Math.max(1, cfg().getInt("loot.items-per-chest-min", 1));
+        int maxItems = Math.max(minItems, cfg().getInt("loot.items-per-chest-max", 2));
         BlockFace[] faces = {BlockFace.NORTH, BlockFace.SOUTH, BlockFace.EAST, BlockFace.WEST};
         int placed = 0;
         for (int attempt = 0; attempt < count * 10 && placed < count; attempt++) {
             Block b = randomSpot(6).getBlock();
             if (arena.isEnclosureBlock(b) || b.getType() == Material.CHEST
                     || b.getRelative(BlockFace.DOWN).getType() == Material.CHEST) continue;
-            ItemStack loot = randomLoot();
-            if (loot == null) return;
+            List<ItemStack> loot = new ArrayList<>();
+            int n = rnd.nextInt(minItems, maxItems + 1);
+            for (int i = 0; i < n; i++) {
+                ItemStack it = randomLoot();
+                if (it != null) loot.add(it);
+            }
+            if (loot.isEmpty()) return placed;
             restorer.record(b); // le coffre disparaît au reset de l'arène
             org.bukkit.block.data.type.Chest data = (org.bukkit.block.data.type.Chest) Material.CHEST.createBlockData();
             data.setFacing(faces[rnd.nextInt(faces.length)]);
             b.setBlockData(data, false);
             if (b.getState() instanceof org.bukkit.block.Chest chest) {
-                chest.getSnapshotInventory().setItem(rnd.nextInt(27), loot);
+                List<Integer> slots = new ArrayList<>();
+                for (int i = 0; i < 27; i++) slots.add(i);
+                Collections.shuffle(slots);
+                for (int i = 0; i < loot.size(); i++) chest.getSnapshotInventory().setItem(slots.get(i), loot.get(i));
                 chest.update(true, false);
             }
             placed++;
         }
-        if (placed > 0) {
-            broadcast("<yellow>" + placed + " coffres <gray>sont cachés dans l'arène : <gold>flûtes, boussoles et plumes de saut</gold> !");
-        }
+        return placed;
     }
 
+    /**
+     * Objet tiré au hasard dans la table "loot.items" de la config :
+     * flute / compass / feather, ou un objet vanilla "MATERIAL:quantité".
+     */
     private ItemStack randomLoot() {
         FileConfiguration c = cfg();
-        int flute = c.getBoolean("flute.enabled", true) ? Math.max(0, c.getInt("loot.weights.flute", 40)) : 0;
-        int compass = c.getBoolean("compass.enabled", true) ? Math.max(0, c.getInt("loot.weights.compass", 25)) : 0;
-        int feather = c.getBoolean("feather.enabled", true) ? Math.max(0, c.getInt("loot.weights.feather", 35)) : 0;
-        int total = flute + compass + feather;
+        org.bukkit.configuration.ConfigurationSection table = c.getConfigurationSection("loot.items");
+        if (table == null) return Flute.create(c);
+        Map<String, Integer> weights = new java.util.LinkedHashMap<>();
+        int total = 0;
+        for (String key : table.getKeys(false)) {
+            int w = Math.max(0, table.getInt(key));
+            String k = key.toLowerCase(java.util.Locale.ROOT);
+            if (k.equals("flute") && !c.getBoolean("flute.enabled", true)) w = 0;
+            if (k.equals("compass") && !c.getBoolean("compass.enabled", true)) w = 0;
+            if (k.equals("feather") && !c.getBoolean("feather.enabled", true)) w = 0;
+            if (w <= 0) continue;
+            weights.put(key, w);
+            total += w;
+        }
         if (total <= 0) return null;
         int r = ThreadLocalRandom.current().nextInt(total);
-        if (r < flute) return Flute.create(c);
-        if (r < flute + compass) return Gadgets.compass(c);
-        return Gadgets.feather(c);
+        for (Map.Entry<String, Integer> e : weights.entrySet()) {
+            r -= e.getValue();
+            if (r >= 0) continue;
+            String key = e.getKey();
+            switch (key.toLowerCase(java.util.Locale.ROOT)) {
+                case "flute" -> { return Flute.create(c); }
+                case "compass" -> { return Gadgets.compass(c); }
+                case "feather" -> { return Gadgets.feather(c); }
+                default -> {
+                    String[] parts = key.split(":");
+                    Material m = Material.matchMaterial(parts[0].trim());
+                    if (m == null || !m.isItem()) return null;
+                    int amount = 1;
+                    if (parts.length > 1) {
+                        try {
+                            amount = Math.max(1, Integer.parseInt(parts[1].trim()));
+                        } catch (NumberFormatException ignored) {
+                        }
+                    }
+                    return new ItemStack(m, Math.min(amount, m.getMaxStackSize()));
+                }
+            }
+        }
+        return null;
+    }
+
+    /** Position actuelle du poulet (sur la tête du porteur s'il est porté), pour la commande admin. */
+    public Location chickenLocation() {
+        return chicken != null && chicken.isValid() ? chicken.getLocation() : null;
     }
 
     /** Flûte : le poulet caquette fort, là où il est. @return true si la flûte a été utilisée. */
@@ -1187,6 +1308,99 @@ public final class Game {
         return true;
     }
 
+    // ================================================================ flèche d'indice
+
+    private int lootInterval() {
+        return cfg().getInt("loot.wave-interval-seconds", 120);
+    }
+
+    private int hintInterval() {
+        return Math.max(10, cfg().getInt("hint-arrow.interval-seconds", 60));
+    }
+
+    private void startHint() {
+        hintCycles = Math.max(1, cfg().getInt("hint-arrow.duration-seconds", 10)) * 4;
+        for (Player p : active()) {
+            Msg.sound(p, "block.note_block.chime", 1.4f);
+            p.sendMessage(Msg.mm(Msg.PREFIX + (isCarrier(p)
+                    ? "<yellow>Une flèche t'indique <gold>l'enclos</gold> pendant quelques secondes !"
+                    : "<yellow>Une flèche t'indique <gold>le poulet</gold> pendant quelques secondes !")));
+        }
+        hintTick();
+    }
+
+    private void stopHint() {
+        hintCycles = 0;
+        for (Map.Entry<UUID, BossBar> e : hintBars.entrySet()) {
+            Player p = Bukkit.getPlayer(e.getKey());
+            if (p != null) p.hideBossBar(e.getValue());
+        }
+        hintBars.clear();
+    }
+
+    /** Toutes les 5 ticks pendant l'indice : flèche dans la barre du haut + flèche de particules devant le joueur. */
+    private void hintTick() {
+        if (--hintCycles <= 0 || chicken == null || !chicken.isValid()) {
+            stopHint();
+            return;
+        }
+        float progress = suddenDeath ? 1f
+                : Math.max(0f, Math.min(1f, hintCycles / (Math.max(1, cfg().getInt("hint-arrow.duration-seconds", 10)) * 4f)));
+        Set<UUID> seen = new HashSet<>();
+        for (Player p : active()) {
+            if (!p.getWorld().equals(chicken.getWorld())) continue;
+            boolean carrying = isCarrier(p);
+            Location target = carrying ? arena.enclosureCenter() : chicken.getLocation();
+            Location eye = p.getEyeLocation();
+            double dx = target.getX() - eye.getX(), dz = target.getZ() - eye.getZ();
+            double dy = target.getY() - p.getLocation().getY();
+            int dist = (int) Math.round(Math.sqrt(dx * dx + dz * dz + dy * dy));
+
+            // Angle relatif : 0 = devant, positif = à droite (le yaw de Minecraft tourne vers la droite)
+            double targetYaw = Math.toDegrees(Math.atan2(-dx, dz));
+            double rel = ((targetYaw - eye.getYaw()) % 360 + 540) % 360 - 180;
+            String[] arrows = {"↑", "↗", "→", "↘", "↓", "↙", "←", "↖"};
+            String arrow = arrows[(int) Math.floorMod(Math.round(rel / 45.0), 8)];
+            String height = dy > 4 ? " <gray>(au-dessus)" : dy < -4 ? " <gray>(en dessous)" : "";
+            String label = carrying ? "<green><bold>" + arrow + "</bold> <white>Enclos à " + dist + " m"
+                    : "<gold><bold>" + arrow + "</bold> <white>Poulet à " + dist + " m" + height;
+
+            BossBar bar = hintBars.get(p.getUniqueId());
+            if (bar == null) {
+                bar = BossBar.bossBar(Msg.mm(label), progress, carrying ? BossBar.Color.GREEN : BossBar.Color.PINK, BossBar.Overlay.NOTCHED_10);
+                hintBars.put(p.getUniqueId(), bar);
+                p.showBossBar(bar);
+            } else {
+                bar.name(Msg.mm(label));
+                bar.progress(progress);
+            }
+            seen.add(p.getUniqueId());
+
+            // Flèche dessinée devant le joueur (visible par lui seul)
+            if (dx * dx + dz * dz < 4) continue;
+            Vector dir = new Vector(dx, 0, dz).normalize();
+            Vector side = new Vector(-dir.getZ(), 0, dir.getX()).multiply(0.45);
+            Location base = p.getLocation().add(0, 1.0, 0);
+            Particle.DustOptions dust = new Particle.DustOptions(carrying ? Color.LIME : Color.YELLOW, 1.1f);
+            for (double d = 1.5; d <= 3.5; d += 0.3) {
+                p.spawnParticle(Particle.DUST, base.clone().add(dir.clone().multiply(d)), 1, 0, 0, 0, 0, dust);
+            }
+            Location tip = base.clone().add(dir.clone().multiply(3.6));
+            for (double k = 0.15; k <= 0.75; k += 0.15) {
+                Vector back = dir.clone().multiply(-k);
+                p.spawnParticle(Particle.DUST, tip.clone().add(back).add(side.clone().multiply(k / 0.75)), 1, 0, 0, 0, 0, dust);
+                p.spawnParticle(Particle.DUST, tip.clone().add(back).subtract(side.clone().multiply(k / 0.75)), 1, 0, 0, 0, 0, dust);
+            }
+        }
+        // Retire la barre des joueurs qui ne sont plus concernés (éliminés, morts...)
+        hintBars.entrySet().removeIf(e -> {
+            if (seen.contains(e.getKey())) return false;
+            Player p = Bukkit.getPlayer(e.getKey());
+            if (p != null) p.hideBossBar(e.getValue());
+            return true;
+        });
+    }
+
     // ================================================================ fin de manche / de partie
 
     private int roundsToWin() {
@@ -1285,6 +1499,7 @@ public final class Game {
             gameTask.cancel();
             gameTask = null;
         }
+        stopHint();
         removeChicken();
         if (winner != null) launchFirework();
         updateHud();
@@ -1358,6 +1573,7 @@ public final class Game {
         }
         clearEntities();
         setChunkTickets(false);
+        restoreDaytime();
         board = null;
         sidebar = null;
         bossBar = null;
@@ -1370,8 +1586,12 @@ public final class Game {
         if (chicken != null && p.getPassengers().contains(chicken)) p.removePassenger(chicken);
         p.setGlowing(false);
         p.setWorldBorder(null);
+        p.resetPlayerTime();
+        p.resetPlayerWeather();
         p.setScoreboard(Bukkit.getScoreboardManager().getMainScoreboard());
         if (bossBar != null) p.hideBossBar(bossBar);
+        BossBar hint = hintBars.remove(id);
+        if (hint != null) p.hideBossBar(hint);
 
         PlayerSnapshot snapshot = snapshots.remove(id);
         if (p.isDead()) {
@@ -1427,6 +1647,55 @@ public final class Game {
                 .with(FireworkEffect.Type.BALL_LARGE).flicker(true).build());
         meta.setPower(1);
         fw.setFireworkMeta(meta);
+    }
+
+    // ================================================================ jour / météo
+
+    private String dayMode() {
+        return cfg().getString("day.mode", "world").toLowerCase(java.util.Locale.ROOT);
+    }
+
+    /**
+     * Début de partie : on met le jour.
+     * "world" : l'heure du monde change (et le cycle peut être bloqué pendant la partie, sinon la nuit
+     * tombe au bout de ~9 min) ; "player" : seuls les joueurs de la partie voient le jour ; "off" : rien.
+     */
+    private void applyDaytime(World w) {
+        lockedDaylight = false;
+        if (!dayMode().equals("world")) return;
+        w.setTime(cfg().getLong("day.time", 1000));
+        if (cfg().getBoolean("day.clear-weather", true)) {
+            w.setStorm(false);
+            w.setThundering(false);
+            w.setClearWeatherDuration((duration + 120) * 20);
+        }
+        if (cfg().getBoolean("day.lock", true) && Boolean.TRUE.equals(w.getGameRuleValue(org.bukkit.GameRules.ADVANCE_TIME))) {
+            w.setGameRule(org.bukkit.GameRules.ADVANCE_TIME, false);
+            lockedDaylight = true;
+        }
+    }
+
+    private void applyPlayerDaytime(Player p) {
+        if (!dayMode().equals("player")) return;
+        // Heure figée (false) si "lock", sinon elle avance normalement à partir du jour
+        p.setPlayerTime(cfg().getLong("day.time", 1000), !cfg().getBoolean("day.lock", true));
+        if (cfg().getBoolean("day.clear-weather", true)) p.setPlayerWeather(org.bukkit.WeatherType.CLEAR);
+    }
+
+    private void restoreDaytime() {
+        if (!lockedDaylight) return;
+        lockedDaylight = false;
+        World w = arena.world();
+        if (w == null) return;
+        // Une autre partie dans le même monde a peut-être encore besoin du jour bloqué
+        for (Arena a : plugin.arenas().all()) {
+            Game other = plugin.games().existing(a.name());
+            if (other != null && other != this && other.isActive() && w.equals(a.world())) {
+                other.lockedDaylight = true;
+                return;
+            }
+        }
+        w.setGameRule(org.bukkit.GameRules.ADVANCE_TIME, true);
     }
 
     // ================================================================ positions / bordure
