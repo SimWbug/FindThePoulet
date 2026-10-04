@@ -123,8 +123,9 @@ public final class Items {
 
     public static ItemStack zoneTool() {
         return tag(build(Material.STICK, "<aqua><bold>Bâton de zone",
-                "<gray>Clic droit au sol : définit la zone",
-                "<gray>de l'arène autour de ce point",
+                "<gray>Clic gauche sur un bloc : <white>coin 1",
+                "<gray>Clic droit sur le bloc opposé : <white>coin 2",
+                "<gray>(mode taille fixe : clic droit = centre)",
                 "<gray>Clic droit dans l'air : menu"), ZONE);
     }
 

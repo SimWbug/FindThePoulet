@@ -74,7 +74,7 @@ public final class PouletCommand implements TabExecutor {
                             : g == null ? "<green>libre" : g.state() == Game.State.WAITING ? "<green>attente" : "<red>" + g.state().name().toLowerCase(Locale.ROOT);
                     sender.sendMessage(Msg.mm(" <dark_gray>- <gold>" + a.name() + " <dark_gray>| " + state
                             + " <dark_gray>| <white>" + (g == null ? 0 : g.size()) + " joueur(s) <dark_gray>| <white>"
-                            + a.mode().label() + " <dark_gray>| <white>PvP " + (a.isPvp() ? "ON" : "OFF")));
+                            + a.mode().label() + " <dark_gray>| <white>PvP " + a.pvpMode().hud()));
                 }
             }
             case "creer", "créer", "create" -> {

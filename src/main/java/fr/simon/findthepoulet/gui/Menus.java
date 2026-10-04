@@ -72,7 +72,7 @@ public final class Menus {
             lore.add("<gray>État : " + state);
             lore.add("<gray>Joueurs : <white>" + count + "/" + plugin.maxPlayers());
             lore.add("<gray>Équipes : <white>" + a.mode().label());
-            lore.add("<gray>PvP : " + onOff(a.isPvp()));
+            lore.add("<gray>PvP : " + a.pvpMode().hud());
             lore.add("");
             if (current == g && g != null) lore.add("<gold>▶ Tu es dans cette partie");
             else lore.add("<yellow>Clic gauche : <white>rejoindre");
@@ -115,7 +115,7 @@ public final class Menus {
                 "<gray>Le poulet fuit : <white>accroupis-toi</white> pour l'approcher.",
                 "<gray>Frappe le porteur pour qu'il le lâche.",
                 "<gray>Coffres cachés : flûtes, boussoles, plumes.",
-                "<red>Si le poulet meurt, tout le monde perd.",
+                "<red>Tuer le poulet : il réapparaît ailleurs,", "<red>et le tueur est ralenti.",
                 "<gray>Durée : <white>" + (plugin.gameDuration() / 60) + " min"));
         inv.setItem(53, Items.build(Material.GOLD_INGOT, "<gold><bold>Classements",
                 "<gray>Victoires, poulets attrapés,", "<gray>poulets ramenés..."));
@@ -135,8 +135,7 @@ public final class Menus {
         // Ligne 1 : réglages de jeu
         inv.setItem(10, Items.build(Material.WHITE_BANNER, "<yellow><bold>Équipes : <white>" + a.mode().label(),
                 "<gray>Solo, Duo, Trio ou Quatuor", "<yellow>Clic : <white>changer"));
-        inv.setItem(11, Items.build(a.isPvp() ? Material.IRON_SWORD : Material.WOODEN_SWORD,
-                "<yellow><bold>PvP : " + onOff(a.isPvp()), "<yellow>Clic : <white>activer / désactiver"));
+        inv.setItem(11, pvpItem(a.pvpMode()));
         inv.setItem(12, Items.build(a.format() == GameFormat.ROUNDS ? Material.CLOCK : Material.HAY_BLOCK,
                 "<yellow><bold>Format : <white>" + a.format().label(),
                 "<gray>Classique : le 1er poulet ramené gagne",
@@ -158,6 +157,7 @@ public final class Menus {
         // Ligne 2 : gestion
         inv.setItem(20, Items.build(Material.MAP, "<gold><bold>" + a.name(),
                 "<gray>Monde : <white>" + r.world(),
+                "<gray>Taille : <white>" + r.describe(),
                 "<gray>Zone : <white>" + r.minX() + ", " + r.minZ() + " → " + r.maxX() + ", " + r.maxZ(),
                 "<gray>Enclos : <white>" + a.ex() + ", " + a.ey() + ", " + a.ez(),
                 "<gray>Partie : <white>" + (g == null ? "aucune" : g.state().name() + " (" + g.size() + " joueurs)")));
@@ -197,15 +197,15 @@ public final class Menus {
         Inventory inv = create(holder, 36, "<dark_gray>Création : " + (s.name() == null ? "?" : s.name()));
 
         // Ligne 1 : réglages
-        inv.setItem(10, Items.build(Material.FILLED_MAP, "<aqua><bold>Taille : <white>" + s.size() + " × " + s.size(),
-                "<gray>64, 128, 256, 512 ou 1024 blocs de côté",
-                "<gray>(toute la hauteur : surface + cavernes)",
-                s.region() != null ? "<gray>La zone est recalculée autour du même point" : "<gray>Choisis-la avant ou après le bâton",
-                "<yellow>Clic : <white>taille suivante"));
+        inv.setItem(10, Items.build(Material.FILLED_MAP, s.cornerMode()
+                        ? "<aqua><bold>Taille : <white>définie par les 2 coins"
+                        : "<aqua><bold>Taille fixe : <white>" + s.size() + " × " + s.size(),
+                "<gray>Taille fixe : 64, 128, 256, 512 ou 1024",
+                "<gray>blocs de côté autour d'un point",
+                "<yellow>Clic : <white>" + (s.cornerMode() ? "passer en taille fixe" : "taille suivante")));
         inv.setItem(11, Items.build(Material.WHITE_BANNER, "<yellow><bold>Équipes : <white>" + s.mode().label(),
                 "<gray>Solo, Duo, Trio ou Quatuor", "<yellow>Clic : <white>changer"));
-        inv.setItem(12, Items.build(s.pvp() ? Material.IRON_SWORD : Material.WOODEN_SWORD,
-                "<yellow><bold>PvP : " + onOff(s.pvp()), "<yellow>Clic : <white>activer / désactiver"));
+        inv.setItem(12, pvpItem(s.pvpMode()));
         inv.setItem(13, Items.build(s.format() == GameFormat.ROUNDS ? Material.CLOCK : Material.HAY_BLOCK,
                 "<yellow><bold>Format : <white>" + s.format().label(),
                 "<gray>Classique : le 1er poulet ramené gagne",
@@ -222,9 +222,23 @@ public final class Menus {
         inv.setItem(16, skinItem(s.skin()));
 
         // Ligne 2 : outils + validation
+        inv.setItem(19, Items.build(s.cornerMode() ? Material.SPECTRAL_ARROW : Material.TARGET,
+                "<aqua><bold>Mode de zone : <white>" + (s.cornerMode() ? "2 coins" : "taille fixe"),
+                "<gray>2 coins : clic gauche = coin 1, clic droit = coin 2",
+                "<gray>→ rectangle de la taille que tu veux",
+                "<gray>Taille fixe : clic droit = centre de la zone",
+                "<yellow>Clic : <white>changer"));
         inv.setItem(20, Items.build(Material.STICK, (s.region() != null ? "<green>✔ " : "<red>✘ ") + "<aqua><bold>Zone",
-                s.region() != null ? "<gray>Zone définie (" + s.region().size() + "×" + s.region().size() + ")" : "<gray>Pas encore définie",
+                s.region() != null ? "<gray>Zone : <white>" + s.region().describe() : "<gray>Pas encore définie",
+                s.cornerMode() ? "<gray>Coin 1 : " + cornerText(s.corner(0)) : "<gray>Centre : clic droit au sol",
+                s.cornerMode() ? "<gray>Coin 2 : " + cornerText(s.corner(1)) : "",
                 "<yellow>Clic : <white>récupérer le bâton"));
+        inv.setItem(21, Items.build(s.withHeight() ? Material.GLASS : Material.LADDER,
+                "<aqua><bold>Hauteur : <white>" + (s.withHeight() ? "entre les 2 coins (cube)" : "toute la hauteur"),
+                "<gray>Toute la hauteur : surface + cavernes",
+                "<gray>Entre les coins : plancher et plafond = Y des coins",
+                "<gray>(mode 2 coins uniquement)",
+                "<yellow>Clic : <white>changer"));
         inv.setItem(22, Items.build(Material.IRON_HOE, (s.hasEnclosure() ? "<green>✔ " : "<red>✘ ") + "<yellow><bold>Enclos",
                 s.hasEnclosure() ? "<gray>Enclos placé" : "<gray>Pas encore placé",
                 "<yellow>Clic : <white>récupérer la faux"));
@@ -234,6 +248,24 @@ public final class Menus {
         inv.setItem(31, Items.build(Material.BARRIER, "<red><bold>Annuler la création"));
         fill(inv, 0, 35);
         p.openInventory(inv);
+    }
+
+    private static ItemStack pvpItem(fr.simon.findthepoulet.game.PvpMode mode) {
+        Material icon = switch (mode) {
+            case OFF -> Material.WOODEN_SWORD;
+            case ON -> Material.IRON_SWORD;
+            case CARRIER -> Material.GOLDEN_SWORD;
+        };
+        return Items.build(icon, "<yellow><bold>PvP : <white>" + mode.label(),
+                "<gray>Désactivé : personne ne prend de dégâts",
+                "<gray>Activé : tout le monde peut se battre",
+                "<gray>Porteur seulement : on ne peut frapper que",
+                "<gray>celui qui a le poulet, et lui peut riposter",
+                "<yellow>Clic : <white>changer");
+    }
+
+    private static String cornerText(org.bukkit.Location l) {
+        return l == null ? "<red>non défini" : "<white>" + l.getBlockX() + ", " + l.getBlockY() + ", " + l.getBlockZ();
     }
 
     // ================================================================ outils admin
@@ -530,7 +562,7 @@ public final class Menus {
                 p.closeInventory();
                 Msg.send(p, "<yellow>Comment jouer : <gray>trouve <gold>le poulet</gold> (surface ou cavernes), "
                         + "<white>clic droit</white> pour l'attraper et ramène-le dans <gold>l'enclos</gold> du point de départ. "
-                        + "Frappe le porteur pour lui faire lâcher le poulet. <red>Si le poulet meurt, tout le monde perd !");
+                        + "Frappe le porteur pour lui faire lâcher le poulet. <red>Si le poulet meurt, il réapparaît ailleurs (et le tueur est ralenti) !");
             }
             case 53 -> openStats(p);
             case 46 -> {
@@ -559,7 +591,7 @@ public final class Menus {
                 if (locked) { Msg.send(p, "<red>Impossible de modifier l'arène pendant une partie."); return; }
                 switch (slot) {
                     case 10 -> a.setMode(a.mode().next());
-                    case 11 -> a.setPvp(!a.isPvp());
+                    case 11 -> a.setPvpMode(a.pvpMode().next());
                     case 12 -> a.setFormat(a.format().next());
                     case 13 -> a.setFox(!a.isFox());
                     case 14 -> a.setKit(!a.isKit());
@@ -679,6 +711,8 @@ public final class Menus {
         if (s == null) { p.closeInventory(); return; }
         switch (slot) {
             case 10 -> { plugin.setup().cycleSize(p); Msg.sound(p, "ui.button.click", 1f); openSetup(p, s); }
+            case 19 -> { plugin.setup().toggleZoneMode(p); Msg.sound(p, "ui.button.click", 1f); openSetup(p, s); }
+            case 21 -> { plugin.setup().toggleHeight(p); Msg.sound(p, "ui.button.click", 1f); openSetup(p, s); }
             case 11 -> { s.cycleMode(); Msg.sound(p, "ui.button.click", 1f); openSetup(p, s); }
             case 12 -> { s.togglePvp(); Msg.sound(p, "ui.button.click", 1f); openSetup(p, s); }
             case 13 -> { s.cycleFormat(); Msg.sound(p, "ui.button.click", 1f); openSetup(p, s); }

@@ -3,7 +3,7 @@ plugins {
 }
 
 group = "fr.simon"
-version = "1.8.0"
+version = "1.13.0"
 
 repositories {
     mavenCentral()

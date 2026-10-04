@@ -117,6 +117,8 @@ loot:
   min-chests-per-64x64: 6
   surface-chance: 0.7        # 70 % des coffres en surface, le reste dans les cavernes
   chest-particles: true      # petites étincelles au-dessus des coffres pas encore ouverts
+  remove-after-open: true    # le coffre disparaît quand on le referme
+  drop-leftovers: true       # les objets non pris tombent au sol (false = ils disparaissent)
   # Nouvelle vague de coffres pendant la partie (0 = désactivé)
   wave-interval-seconds: 120
   wave-chests-per-player: 1
@@ -152,6 +154,10 @@ feather:
 #   Comportement du poulet
 # ==================================================
 chicken:
+  # Poulet tué : false = il réapparaît ailleurs (la partie continue), true = tout le monde perd
+  death-ends-game: false
+  respawn-delay-seconds: 3
+  killer-penalty-seconds: 10   # celui qui l'a tué est ralenti X secondes (0 = rien)
   # false : le nom du poulet ne s'affiche que quand on le vise de près (pas de loin, pas à travers les murs)
   name-always-visible: false
   flee:
@@ -168,6 +174,14 @@ chicken:
 carrier:
   feather-trail: true
   feather-lifetime-seconds: 20
+
+# Apparition des joueurs
+players:
+  random-start: true             # au lancement (et à chaque manche) : chaque équipe à un endroit aléatoire
+  random-respawn: false          # après une mort : true = endroit aléatoire, false = devant l'enclos
+  min-distance-from-chicken: 20  # on n'apparaît pas juste à côté du poulet
+  surface-chance: 0.9            # 90 % en surface, le reste dans les cavernes
+  hide-enemy-nametags: true      # pendant la partie, on ne voit que le pseudo de ses coéquipiers
 
 # Anti-camping de l'enclos
 anti-camp:

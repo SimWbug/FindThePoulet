@@ -200,8 +200,21 @@ public final class GameListener implements Listener {
             e.setCancelled(true);
             return;
         }
-        if (g.isCarrier(victim) && plugin.dropOnHit()) g.dropChicken(victim, attacker);
-        if (!g.arena().isPvp()) e.setCancelled(true);
+        // Statut AVANT le coup (le coup peut faire lâcher le poulet)
+        boolean victimCarrier = g.isCarrier(victim);
+        boolean attackerCarrier = g.isCarrier(attacker);
+        if (victimCarrier && plugin.dropOnHit()) g.dropChicken(victim, attacker);
+        switch (g.arena().pvpMode()) {
+            case OFF -> e.setCancelled(true);
+            case CARRIER -> {
+                // On ne se bat que pour le poulet : seul le porteur peut être frappé, et lui peut riposter
+                if (!victimCarrier && !attackerCarrier) {
+                    e.setCancelled(true);
+                    attacker.sendActionBar(Msg.mm("<gray>Tu ne peux frapper que celui qui porte le poulet."));
+                }
+            }
+            case ON -> { }
+        }
     }
 
     @EventHandler
@@ -326,7 +339,7 @@ public final class GameListener implements Listener {
         Game g = of(p);
         if (g == null) return;
         if (g.isActive()) {
-            e.setRespawnLocation(g.respawnLocation());
+            e.setRespawnLocation(g.deathRespawnLocation());
             Bukkit.getScheduler().runTask(plugin, () -> {
                 if (p.isOnline() && of(p) == g) g.onRespawn(p);
             });
@@ -518,6 +531,14 @@ public final class GameListener implements Listener {
         }
         recordContainer(g, e.getInventory());
         g.chestOpened(l);
+    }
+
+    @EventHandler
+    public void onClose(org.bukkit.event.inventory.InventoryCloseEvent e) {
+        Location l = e.getInventory().getLocation();
+        if (l == null) return;
+        Game g = at(l);
+        if (g != null) g.chestClosed(l, e.getInventory());
     }
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)

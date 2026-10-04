@@ -23,7 +23,8 @@ PvP désactivé, construction réservée aux admins, pas d'explosions ni de feu.
 ## Créer une arène (op)
 1. Tête de poulet → étoile **Créer une arène** (ou `/poulet creer`)
 2. Écrire le nom dans le chat
-3. **Bâton** : clic droit au sol → zone autour du point, contour en particules
+3. **Bâton** : clic gauche sur un bloc = coin 1, clic droit sur le bloc opposé = coin 2 → rectangle de la taille voulue
+   (option « Hauteur : entre les 2 coins » pour une zone en cube, ou mode « taille fixe » 64 à 1024 autour d'un point)
 4. Menu (clic droit dans l'air) : **taille 64 / 128 / 256 / 512 / 1024**, équipes, PvP, format (Classique / Manches), mode Renard, kit, déguisement
    (au-delà de 512, pré-génère la zone avec un plugin comme Chunky)
 5. **Faux** : clic droit au sol → enclos 4×4 avec porte (à 4 blocs mini du bord)

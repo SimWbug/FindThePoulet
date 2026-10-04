@@ -33,8 +33,10 @@ public final class ArenaManager {
             ConfigurationSection s = root.getConfigurationSection(key);
             if (s == null) continue;
             try {
-                Region region = new Region(s.getString("world"),
-                        s.getInt("min-x"), s.getInt("min-z"), s.getInt("max-x"), s.getInt("max-z"));
+                Region region = s.contains("min-y")
+                        ? new Region(s.getString("world"), s.getInt("min-x"), s.getInt("min-y"), s.getInt("min-z"),
+                                s.getInt("max-x"), s.getInt("max-y"), s.getInt("max-z"))
+                        : new Region(s.getString("world"), s.getInt("min-x"), s.getInt("min-z"), s.getInt("max-x"), s.getInt("max-z"));
                 Arena arena = new Arena(s.getString("name", key), region,
                         TeamMode.parse(s.getString("mode")), s.getBoolean("pvp", true), s.getBoolean("enabled", true),
                         s.getInt("enclosure.x"), s.getInt("enclosure.y"), s.getInt("enclosure.z"),
@@ -43,6 +45,7 @@ public final class ArenaManager {
                 arena.setFormat(fr.simon.findthepoulet.game.GameFormat.parse(s.getString("format")));
                 arena.setFox(s.getBoolean("fox", false));
                 arena.setKit(s.getBoolean("kit", true));
+                arena.setPvpMode(fr.simon.findthepoulet.game.PvpMode.parse(s.getString("pvp-mode"), arena.pvpMode()));
                 arenas.put(key(arena.name()), arena);
             } catch (Exception ex) {
                 plugin.getLogger().warning("Arène invalide '" + key + "' : " + ex.getMessage());
@@ -61,8 +64,13 @@ public final class ArenaManager {
             yaml.set(p + "min-z", r.minZ());
             yaml.set(p + "max-x", r.maxX());
             yaml.set(p + "max-z", r.maxZ());
+            if (!r.fullHeight()) {
+                yaml.set(p + "min-y", r.minY());
+                yaml.set(p + "max-y", r.maxY());
+            }
             yaml.set(p + "mode", a.mode().name());
             yaml.set(p + "pvp", a.isPvp());
+            yaml.set(p + "pvp-mode", a.pvpMode().name());
             yaml.set(p + "enabled", a.isEnabled());
             yaml.set(p + "skin", a.skin());
             yaml.set(p + "format", a.format().name());

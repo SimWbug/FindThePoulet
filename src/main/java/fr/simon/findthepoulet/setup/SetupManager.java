@@ -95,10 +95,47 @@ public final class SetupManager {
         s.stage = SetupSession.Stage.ZONE;
         Items.give(p, Items.zoneTool());
         Msg.send(p, "<green>Arène <gold>" + name + "</gold> !");
-        Msg.send(p, "<yellow>Étape 2 : <white>fais un clic droit au sol avec le <aqua>Bâton de zone</aqua> "
-                + "<white>pour créer la zone (" + s.size + "×" + s.size + " blocs autour de ce point).");
-        Msg.send(p, "<gray>Tu peux changer la taille (64 à 1024) dans le menu : <yellow>clic droit dans l'air <gray>avec le bâton.");
+        Msg.send(p, "<yellow>Étape 2 : <white>avec le <aqua>Bâton de zone</aqua>, <yellow>clic gauche</yellow> sur un bloc = coin 1, "
+                + "<yellow>clic droit</yellow> sur le bloc opposé = coin 2. <gray>(rectangle de la taille que tu veux)");
+        Msg.send(p, "<gray>Autres options dans le menu (<yellow>clic droit dans l'air</yellow>) : limiter la hauteur (cube), "
+                + "ou une taille fixe 64 à 1024 autour d'un point.");
         Msg.sound(p, "entity.experience_orb.pickup", 1f);
+    }
+
+    /** Clic avec le bâton en mode coins : 0 = coin 1 (clic gauche), 1 = coin 2 (clic droit). */
+    public void onZoneCorner(Player p, Block block, int idx) {
+        SetupSession s = sessions.get(p.getUniqueId());
+        if (s == null) return;
+        if (s.stage == SetupSession.Stage.NAME) {
+            Msg.send(p, "<red>Écris d'abord le nom de l'arène dans le chat.");
+            return;
+        }
+        if (s.corners[1 - idx] != null && !s.corners[1 - idx].getWorld().equals(block.getWorld())) s.corners[1 - idx] = null;
+        s.corners[idx] = block.getLocation();
+        Msg.send(p, "<green>Coin " + (idx + 1) + " : <white>" + block.getX() + ", " + block.getY() + ", " + block.getZ());
+        Msg.sound(p, "block.note_block.pling", idx == 0 ? 1.2f : 1.6f);
+        if (s.corners[0] == null || s.corners[1] == null) {
+            Msg.send(p, "<gray>Maintenant le coin " + (2 - idx) + " : <yellow>" + (idx == 0 ? "clic droit" : "clic gauche") + " <gray>sur le bloc opposé.");
+            return;
+        }
+        applyCorners(p, s);
+    }
+
+    /** Recalcule la zone à partir des 2 coins (après un clic ou un changement de l'option hauteur). */
+    private boolean applyCorners(Player p, SetupSession s) {
+        Region region = Region.between(s.corners[0], s.corners[1], s.withHeight);
+        int min = 2 * MARGIN + plugin.enclosureSize() + 6;
+        if (region.width() < min || region.depth() < min) {
+            Msg.send(p, "<red>Zone trop petite (" + region.width() + " × " + region.depth() + ") : il faut au moins "
+                    + min + " × " + min + " blocs pour l'enclos et ses marges.");
+            return false;
+        }
+        if (s.withHeight && region.maxY() - region.minY() < 8) {
+            Msg.send(p, "<red>Zone trop basse : il faut au moins 8 blocs de hauteur entre les deux coins "
+                    + "<gray>(clique un coin en hauteur et l'autre en profondeur, ou désactive la limite de hauteur).");
+            return false;
+        }
+        return setRegion(p, s, region);
     }
 
     public void onZoneClick(Player p, Block block) {
@@ -109,9 +146,13 @@ public final class SetupManager {
             return;
         }
         Region region = Region.around(block.getLocation(), s.size);
-        if (!canUse(p, region)) return;
         s.zoneCenter = block.getLocation();
-        if (s.hasEnclosure() && !fits(region, s.ex, s.ez, s.n)) {
+        setRegion(p, s, region);
+    }
+
+    private boolean setRegion(Player p, SetupSession s, Region region) {
+        if (!canUse(p, region)) return false;
+        if (s.hasEnclosure() && !fitsAll(region, s)) {
             EnclosureBuilder.undo(s.enclosureOriginal);
             s.enclosureOriginal = null;
             Msg.send(p, "<gold>L'enclos n'était plus dans la nouvelle zone : il a été retiré, replace-le avec la faux.");
@@ -119,12 +160,41 @@ public final class SetupManager {
         s.region = region;
         s.stage = SetupSession.Stage.SETTINGS;
         Items.give(p, Items.enclosTool());
-        Msg.send(p, "<green>Zone définie ! <gray>(" + region.minX() + ", " + region.minZ() + ") → ("
-                + region.maxX() + ", " + region.maxZ() + "), toute la hauteur : surface et cavernes. <dark_gray>(contour en particules vertes)");
+        Msg.send(p, "<green>Zone définie : <white>" + region.describe() + "</white> blocs <gray>("
+                + region.minX() + ", " + region.minZ() + " → " + region.maxX() + ", " + region.maxZ() + ")"
+                + (region.fullHeight() ? ", toute la hauteur" : "") + ". <dark_gray>(contour en particules vertes)");
+        if (region.size() > 256) {
+            Msg.send(p, "<gold>Grande arène : <gray>pré-génère la zone (plugin Chunky par ex.) pour éviter les lags au lancement.");
+        }
         Msg.send(p, "<yellow>Étape 3 : <white>choisis les équipes et le PvP dans le menu, puis place l'enclos "
                 + "avec la <yellow>Faux de l'enclos</yellow> (clic droit au sol).");
         Msg.sound(p, "block.amethyst_block.chime", 1f);
         Menus.openSetup(p, s);
+        return true;
+    }
+
+    private static boolean fitsAll(Region r, SetupSession s) {
+        return fits(r, s.ex, s.ez, s.n) && (r.fullHeight() || (s.ey - 1 >= r.minY() && s.ey + 3 <= r.maxY()));
+    }
+
+    /** Menu : bascule entre "2 coins" et "taille fixe autour d'un point". */
+    public void toggleZoneMode(Player p) {
+        SetupSession s = sessions.get(p.getUniqueId());
+        if (s == null) return;
+        s.cornerMode = !s.cornerMode;
+        Msg.send(p, s.cornerMode
+                ? "<gray>Mode <white>2 coins</white> : clic gauche = coin 1, clic droit = coin 2 avec le bâton."
+                : "<gray>Mode <white>taille fixe</white> : clic droit au sol avec le bâton = centre de la zone.");
+    }
+
+    /** Menu : limiter (ou non) la zone à la hauteur entre les 2 coins. */
+    public void toggleHeight(Player p) {
+        SetupSession s = sessions.get(p.getUniqueId());
+        if (s == null) return;
+        s.withHeight = !s.withHeight;
+        if (s.cornerMode && s.corners[0] != null && s.corners[1] != null) {
+            if (!applyCorners(p, s)) s.withHeight = !s.withHeight; // on annule si la zone n'est pas valide
+        }
     }
 
     public void onEnclosClick(Player p, Block block) {
@@ -144,6 +214,10 @@ public final class SetupManager {
         int ey = block.getY() + 1;
         if (!fits(s.region, ex, ez, n)) {
             Msg.send(p, "<red>Trop près du bord ! <gray>L'enclos doit être à au moins " + MARGIN + " blocs de la limite.");
+            return;
+        }
+        if (!s.region.fullHeight() && (ey - 1 < s.region.minY() || ey + 3 > s.region.maxY())) {
+            Msg.send(p, "<red>L'enclos doit tenir entre le sol et le plafond de la zone (Y " + s.region.minY() + " → " + s.region.maxY() + ").");
             return;
         }
         World w = block.getWorld();
@@ -192,6 +266,10 @@ public final class SetupManager {
         java.util.List<Integer> sizes = new java.util.ArrayList<>(plugin.getConfig().getIntegerList("arena-sizes"));
         sizes.removeIf(v -> v < 32);
         if (sizes.isEmpty()) sizes = java.util.List.of(64, 128, 256, 512, 1024);
+        if (s.cornerMode) {
+            s.cornerMode = false;
+            Msg.send(p, "<gray>Passage en mode <white>taille fixe</white> : clic droit au sol avec le bâton = centre de la zone.");
+        }
         int start = Math.max(0, sizes.indexOf(s.size));
         for (int k = 1; k <= sizes.size(); k++) {
             int next = sizes.get((start + k) % sizes.size());
@@ -242,6 +320,7 @@ public final class SetupManager {
         if (!canUse(p, s.region)) return;
         Arena arena = new Arena(s.name, s.region, s.mode, s.pvp, true, s.ex, s.ey, s.ez, s.n);
         arena.setFormat(s.format);
+        arena.setPvpMode(s.pvpMode);
         arena.setFox(s.fox);
         arena.setKit(s.kit);
         arena.setSkin(s.skin);

@@ -122,6 +122,8 @@ public final class Game {
     private final Set<UUID> hiddenChickens = new HashSet<>();
     /** Coffres posés par le plugin et pas encore ouverts (petites particules pour les repérer). */
     private final Set<Location> unopenedChests = new HashSet<>();
+    /** Tous les coffres posés par le plugin (supprimés une fois ouverts puis refermés). */
+    private final Set<Location> lootChests = new HashSet<>();
     private int hintCycles;
     private final Map<UUID, BossBar> hintBars = new HashMap<>();
     private BukkitTask countdownTask;
@@ -257,7 +259,7 @@ public final class Game {
         broadcast("<yellow>" + p.getName() + " <gray>a rejoint <gold>" + arena.name()
                 + " <gray>(" + players.size() + "/" + plugin.maxPlayers() + ")");
         Msg.send(p, "<gray>Mode : <white>" + arena.mode().label() + " <dark_gray>| <white>" + arena.format().label()
-                + (arena.isFox() ? " <dark_gray>| <gold>Renard" : "") + " <dark_gray>| <white>PvP " + (arena.isPvp() ? "ON" : "OFF"));
+                + (arena.isFox() ? " <dark_gray>| <gold>Renard" : "") + " <dark_gray>| <white>PvP " + arena.pvpMode().hud());
         Msg.sound(p, "entity.chicken.ambient", 1f);
 
         int min = plugin.minPlayers();
@@ -477,6 +479,9 @@ public final class Game {
         gameSkin = plugin.skins().pick(arena.skin());
         spawnChicken();
         if (gameSkin != null) broadcast("<gray>Le poulet du jour : " + gameSkin.name() + " <gray>!");
+        if (scatterPlayers(chicken != null ? chicken.getLocation() : null)) {
+            broadcast("<gray>Chaque équipe apparaît à un endroit aléatoire de l'arène !");
+        }
         spawnLootChests();
         updateHud();
         gameTask = Bukkit.getScheduler().runTaskTimer(plugin, this::tick, 5L, 5L);
@@ -532,6 +537,10 @@ public final class Game {
             Team st = board.registerNewTeam(t.scoreboardId());
             st.color(t.color());
             st.setAllowFriendlyFire(false);
+            // Pseudos visibles uniquement par les coéquipiers (en solo : personne ne voit les pseudos)
+            if (cfg().getBoolean("players.hide-enemy-nametags", true)) {
+                st.setOption(Team.Option.NAME_TAG_VISIBILITY, Team.OptionStatus.FOR_OWN_TEAM);
+            }
             for (UUID id : t.members()) {
                 Player p = Bukkit.getPlayer(id);
                 if (p != null) st.addEntry(p.getName());
@@ -694,7 +703,7 @@ public final class Game {
         }
         if (suddenDeath) lines.add("<red><bold>☠ MORT SUBITE");
         lines.add(" ");
-        lines.add("<yellow>" + arena.mode().label() + " <dark_gray>| <yellow>PvP " + (arena.isPvp() ? "<green>ON" : "<red>OFF"));
+        lines.add("<yellow>" + arena.mode().label() + " <dark_gray>| <yellow>PvP " + arena.pvpMode().hud());
 
         for (int i = 0; i < lines.size(); i++) {
             Score s = sidebar.getScore("line" + i);
@@ -796,12 +805,16 @@ public final class Game {
             double dx = x + 0.5 - center.getX(), dz = z + 0.5 - center.getZ();
             if (dx * dx + dz * dz < minD * minD) continue;
             int top = w.getHighestBlockYAt(x, z, org.bukkit.HeightMap.MOTION_BLOCKING_NO_LEAVES);
-            if (rnd.nextDouble() < surfaceChance) {
+            // Zone limitée en hauteur : on reste entre le plancher et le plafond de l'arène
+            int low = Math.max(w.getMinHeight() + 1, r.fullHeight() ? Integer.MIN_VALUE : r.minY() + 1);
+            int high = Math.min(top + 1, r.fullHeight() ? Integer.MAX_VALUE : r.maxY() - 2);
+            if (rnd.nextDouble() < surfaceChance && top + 1 <= high && top + 1 >= low) {
                 if (Locs.standable(w, x, top + 1, z)) return Locs.center(w, x, top + 1, z);
                 if (surfaceChance >= 0.99) continue;
             }
+            if (high < low) continue;
             for (int k = 0; k < 16; k++) {
-                int y = rnd.nextInt(w.getMinHeight() + 1, top + 2);
+                int y = rnd.nextInt(low, high + 1);
                 if (Locs.standable(w, x, y, z)) return Locs.center(w, x, y, z);
             }
         }
@@ -933,9 +946,29 @@ public final class Game {
     }
 
     public void chickenKilled(Player killer) {
+        if (state != State.RUNNING) return;
         if (killer != null && players.contains(killer.getUniqueId())) plugin.stats().add(killer, Stat.KILLS);
-        end(null, "<red>Le poulet est mort" + (killer != null ? " (tué par <yellow>" + killer.getName() + "</yellow>)" : "")
-                + " ! <dark_red>Tout le monde a perdu.");
+        String by = killer != null ? " par " + coloredName(killer) : "";
+        if (cfg().getBoolean("chicken.death-ends-game", false)) {
+            end(null, "<red>Le poulet a été tué" + by + " <red>! <dark_red>Tout le monde a perdu.");
+            return;
+        }
+        // Le poulet réapparaît ailleurs après une courte pause
+        for (Player p : online()) p.setGlowing(false);
+        removeChicken();
+        lastCarrier = null;
+        grabCooldown.clear();
+        pauseCycles = 4 * Math.max(1, cfg().getInt("chicken.respawn-delay-seconds", 3));
+        broadcast("<red>Le poulet a été tué" + by + " <red>! <gray>Il va réapparaître ailleurs dans l'arène...");
+        soundAll("entity.chicken.death", 1f);
+        if (killer != null && players.contains(killer.getUniqueId())) {
+            int slow = cfg().getInt("chicken.killer-penalty-seconds", 10);
+            if (slow > 0) {
+                killer.addPotionEffect(new PotionEffect(PotionEffectType.SLOWNESS, slow * 20, 1));
+                Msg.send(killer, "<red>Tu as tué le poulet : tu es ralenti pendant " + slow + " s !");
+            }
+        }
+        updateHud();
     }
 
     /** Garde le chunk du poulet chargé, sinon il disparaîtrait loin des joueurs (grandes arènes). */
@@ -1116,8 +1149,35 @@ public final class Game {
     /** Minimum de coffres selon la taille de l'arène (sinon une grande arène paraît vide). */
     private int densityChests() {
         double perZone = Math.max(0, cfg().getDouble("loot.min-chests-per-64x64", 6));
-        double zones = Math.pow(arena.region().size() / 64.0, 2);
+        double zones = arena.region().area() / 4096.0;
         return (int) Math.round(perZone * zones);
+    }
+
+    /**
+     * Coffre du plugin refermé : il disparaît (dans un petit nuage) et les objets
+     * qui restaient dedans tombent au sol pour les autres joueurs.
+     */
+    public void chestClosed(Location l, org.bukkit.inventory.Inventory inv) {
+        Location key = l.getBlock().getLocation();
+        if (!isRunning() || !lootChests.contains(key) || !cfg().getBoolean("loot.remove-after-open", true)) return;
+        Bukkit.getScheduler().runTask(plugin, () -> {
+            if (!isRunning() || !inv.getViewers().isEmpty()) return; // quelqu'un d'autre regarde encore dedans
+            Block b = key.getBlock();
+            lootChests.remove(key);
+            unopenedChests.remove(key);
+            if (b.getType() != Material.CHEST || !(b.getState() instanceof org.bukkit.block.Chest chest)) return;
+            List<ItemStack> left = new ArrayList<>();
+            for (ItemStack it : chest.getBlockInventory().getContents()) if (it != null && !it.getType().isAir()) left.add(it.clone());
+            chest.getBlockInventory().clear();
+            b.setType(Material.AIR, false); // l'état d'origine est déjà enregistré pour le reset
+            Location center = key.clone().add(0.5, 0.5, 0.5);
+            if (cfg().getBoolean("loot.drop-leftovers", true)) {
+                for (ItemStack it : left) trackEntity(center.getWorld().dropItemNaturally(center, it));
+            }
+            center.getWorld().spawnParticle(Particle.POOF, center, 12, 0.3, 0.3, 0.3, 0.02);
+            center.getWorld().playSound(Sound.sound(Key.key("block.wood.break"), Sound.Source.BLOCK, 1f, 1.2f),
+                    center.getX(), center.getY(), center.getZ());
+        });
     }
 
     /** Coffre ouvert (ou cassé) : on arrête ses particules. */
@@ -1174,6 +1234,7 @@ public final class Game {
                 chest.update(true, false);
             }
             unopenedChests.add(b.getLocation());
+            lootChests.add(b.getLocation());
             placed++;
         }
         return placed;
@@ -1495,6 +1556,7 @@ public final class Game {
                     teamLabel(t) + " <gray>: <gold>" + pts + "<gray>/" + roundsToWin(), 50);
             Msg.sound(p, scored ? "entity.player.levelup" : "entity.villager.no", 1f);
         }
+        scatterPlayers(null);
         broadcast(coloredName(carrier) + " <yellow>a ramené le poulet ! " + teamLabel(t) + " <yellow>marque <gold>"
                 + pts + "/" + roundsToWin() + "</gold>. <gray>Manche " + round + " dans quelques secondes...");
         updateHud();
@@ -1614,6 +1676,7 @@ public final class Game {
         restoreDaytime();
         hiddenChickens.clear();
         unopenedChests.clear();
+        lootChests.clear();
         board = null;
         sidebar = null;
         bossBar = null;
@@ -1770,6 +1833,48 @@ public final class Game {
     }
 
     // ================================================================ positions / bordure
+
+    /**
+     * Apparition aléatoire : chaque équipe (et le Renard) à un endroit différent de l'arène,
+     * loin du poulet. @return false si l'option est désactivée.
+     */
+    private boolean scatterPlayers(Location avoid) {
+        if (!cfg().getBoolean("players.random-start", true)) return false;
+        Map<GameTeam, List<Player>> groups = new java.util.LinkedHashMap<>();
+        for (Player p : online()) {
+            if (p.isDead() || isEliminated(p)) continue;
+            GameTeam t = teamOf.get(p.getUniqueId());
+            groups.computeIfAbsent(t, k -> new ArrayList<>()).add(p);
+        }
+        for (List<Player> members : groups.values()) {
+            Location spot = randomPlayerSpot(avoid);
+            for (Player p : members) {
+                spot.setYaw(ThreadLocalRandom.current().nextFloat() * 360f);
+                p.teleport(spot);
+                p.setFallDistance(0f);
+                applyBorder(p);
+            }
+        }
+        return true;
+    }
+
+    private Location randomPlayerSpot(Location avoid) {
+        double min = cfg().getDouble("players.min-distance-from-chicken", 20);
+        Location l = null;
+        for (int i = 0; i < 10; i++) {
+            l = randomSpot(8, cfg().getDouble("players.surface-chance", 0.9));
+            if (avoid == null || !avoid.getWorld().equals(l.getWorld()) || avoid.distanceSquared(l) >= min * min) return l;
+        }
+        return l;
+    }
+
+    /** Réapparition après une mort : aléatoire ou devant l'enclos selon la config. */
+    public Location deathRespawnLocation() {
+        if (cfg().getBoolean("players.random-respawn", false)) {
+            return randomPlayerSpot(chicken != null && chicken.isValid() ? chicken.getLocation() : null);
+        }
+        return respawnLocation();
+    }
 
     /** Point de départ / réapparition : devant la porte de l'enclos. */
     public Location respawnLocation() {

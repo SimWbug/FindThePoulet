@@ -37,6 +37,13 @@ public final class SetupListener implements Listener {
         });
     }
 
+    /** En créatif, le clic gauche casse le bloc : on l'empêche quand on tient un outil de sélection. */
+    @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
+    public void onBreakWithTool(org.bukkit.event.block.BlockBreakEvent e) {
+        String tag = Items.tagOf(e.getPlayer().getInventory().getItemInMainHand());
+        if (Items.ZONE.equals(tag) || Items.LOBBY.equals(tag) || Items.ENCLOS.equals(tag)) e.setCancelled(true);
+    }
+
     @EventHandler(priority = EventPriority.LOW)
     public void onTool(PlayerInteractEvent e) {
         if (e.getHand() != EquipmentSlot.HAND) return;
@@ -52,8 +59,12 @@ public final class SetupListener implements Listener {
             return;
         }
         Action action = e.getAction();
-        if (action == Action.RIGHT_CLICK_BLOCK && e.getClickedBlock() != null) {
-            if (Items.ZONE.equals(tag)) plugin.setup().onZoneClick(p, e.getClickedBlock());
+        boolean zone = Items.ZONE.equals(tag);
+        if (zone && s.cornerMode() && e.getClickedBlock() != null
+                && (action == Action.LEFT_CLICK_BLOCK || action == Action.RIGHT_CLICK_BLOCK)) {
+            plugin.setup().onZoneCorner(p, e.getClickedBlock(), action == Action.LEFT_CLICK_BLOCK ? 0 : 1);
+        } else if (action == Action.RIGHT_CLICK_BLOCK && e.getClickedBlock() != null) {
+            if (zone) plugin.setup().onZoneClick(p, e.getClickedBlock());
             else plugin.setup().onEnclosClick(p, e.getClickedBlock());
         } else if (action == Action.RIGHT_CLICK_AIR) {
             if (s.stage() == SetupSession.Stage.NAME) Msg.send(p, "<red>Écris d'abord le nom de l'arène dans le chat.");

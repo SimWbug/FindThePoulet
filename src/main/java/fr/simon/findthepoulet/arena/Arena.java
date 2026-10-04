@@ -20,6 +20,7 @@ public final class Arena {
     private GameFormat format = GameFormat.CLASSIC;
     private boolean fox;
     private boolean kit = true;
+    private fr.simon.findthepoulet.game.PvpMode pvpMode;
 
     // Coin intérieur de l'enclos (x, z) et hauteur où l'on marche (y)
     private final int ex, ey, ez, size;
@@ -30,6 +31,7 @@ public final class Arena {
         this.region = region;
         this.mode = mode;
         this.pvp = pvp;
+        this.pvpMode = pvp ? fr.simon.findthepoulet.game.PvpMode.ON : fr.simon.findthepoulet.game.PvpMode.OFF;
         this.enabled = enabled;
         this.ex = ex;
         this.ey = ey;
@@ -40,7 +42,13 @@ public final class Arena {
     public String name() { return name; }
     public Region region() { return region; }
     public TeamMode mode() { return mode; }
-    public boolean isPvp() { return pvp; }
+    /** PvP possible d'une façon ou d'une autre (activé ou "porteur seulement"). */
+    public boolean isPvp() { return pvpMode != fr.simon.findthepoulet.game.PvpMode.OFF; }
+    public fr.simon.findthepoulet.game.PvpMode pvpMode() { return pvpMode; }
+    public void setPvpMode(fr.simon.findthepoulet.game.PvpMode mode) {
+        this.pvpMode = mode == null ? fr.simon.findthepoulet.game.PvpMode.ON : mode;
+        this.pvp = isPvp();
+    }
     public boolean isEnabled() { return enabled; }
     public int ex() { return ex; }
     public int ey() { return ey; }
@@ -48,7 +56,7 @@ public final class Arena {
     public int enclosureSize() { return size; }
 
     public void setMode(TeamMode mode) { this.mode = mode; }
-    public void setPvp(boolean pvp) { this.pvp = pvp; }
+    public void setPvp(boolean pvp) { setPvpMode(pvp ? fr.simon.findthepoulet.game.PvpMode.ON : fr.simon.findthepoulet.game.PvpMode.OFF); }
     public void setEnabled(boolean enabled) { this.enabled = enabled; }
     public String skin() { return skin; }
     public GameFormat format() { return format; }
